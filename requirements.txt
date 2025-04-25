@@ -2,5 +2,4 @@ streamlit
 matplotlib
 numpy
 pandas
-
-streamlit-gsheets
+st-gsheets-connection
