@@ -112,18 +112,33 @@ col1, col2, col3 = st.columns([8, 9, 5], gap='large')
 with col1:
     st.subheader("Time-In / Time-Out Status")
     if not filtered_df.empty:
-        # Using value_counts for potentially faster calculation if dataset grows
-        id_counts = filtered_df['Identification No.'].value_counts()
-        time_in_count = (id_counts % 2 != 0).sum() # Count IDs with odd appearances (currently IN)
-        time_out_count = (id_counts % 2 == 0).sum() # Count IDs with even appearances (currently OUT)
-        # This assumes the latest record determines current status for pie chart %
-        # A more robust approach might need tracking pairs of entries per ID per day.
+        # --- IMPORTANT CAVEAT ---
+        # This calculation assumes 'filtered_df' contains ONLY the entries
+        # relevant for determining current in/out status (e.g., all entries
+        # from today, or since the campus opened). If it contains old data,
+        # the odd/even count might be incorrect for "currently inside".
+        # You might need to filter filtered_df by date before calculating id_counts
+        # if your Google Sheet accumulates data over multiple days.
+        # Example (uncomment and adapt if needed):
+        # today_date = pd.to_datetime('today', utc=True).normalize() # Get today's date UTC
+        # # Assuming 'Timestamp' column is timezone-aware UTC or convert it
+        # # filtered_df['Timestamp'] = filtered_df['Timestamp'].dt.tz_convert('UTC') # Example conversion
+        # relevant_df = filtered_df[filtered_df['Timestamp'] >= today_date]
+        # id_counts = relevant_df['Identification No.'].value_counts()
 
-        # Create pie chart
+        # If sheet only contains relevant data, use filtered_df directly:
+        id_counts = filtered_df['Identification No.'].value_counts()
+
+        # Correctly calculates IDs with an odd number of entries (presumed inside)
+        time_in_count = (id_counts % 2 != 0).sum()
+        # Correctly calculates IDs with an even number of entries (presumed outside)
+        time_out_count = (id_counts % 2 == 0).sum()
+
+        # --- Create Pie Chart ---
         fig, ax = plt.subplots(figsize=(4, 3)) # Adjust size as needed
         labels = ['Inside', 'Outside']
-        sizes = [time_in_count, time_out_count]
-        colors = ['#7d171e','#c1ab43'] # Swapped colors: Maroon for Inside, Gold for Outside
+        sizes = [time_in_count, time_out_count] # Use correct counts
+        colors = ['#7d171e','#c1ab43'] # Maroon for Inside, Gold for Outside
         if sum(sizes) > 0: # Avoid division by zero if no data
             ax.pie(sizes, labels=labels, autopct='%1.1f%%', startangle=90, colors=colors, pctdistance=0.80, explode=(0.05, 0.05))
         else:
@@ -133,14 +148,22 @@ with col1:
         fig.gca().add_artist(centre_circle)
         st.pyplot(fig, use_container_width=True) # Let streamlit manage width
 
-        st.metric("People inside the campus", len(id_counts))
+        # --- CORRECTED METRIC ---
+        # Display the actual calculated count of people inside
+        st.metric("People inside the campus", time_in_count)
+        # --- END CORRECTION ---
 
     else:
         st.info("No attendance data loaded.")
+        # Display 0 when no data is loaded
+        st.metric("People inside the campus", 0)
+
 
     st.subheader("Latest Entries")
-    # Use st.dataframe for potentially better display options
-    st.table(filtered_df.head(4))
+    # Display table (using st.table or st.dataframe)
+    # st.dataframe(filtered_df.head(5), use_container_width=True, hide_index=True) # Consider dataframe
+    st.table(filtered_df.head(4)) # Keep st.table if preferred
+
 
 # --- COLUMN 2: Image Gallery ---
 with col2:
