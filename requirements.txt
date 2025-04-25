@@ -5,3 +5,4 @@ pandas
 st-gsheets-connection
 gspread
 streamlit-autorefresh
+Pillow
