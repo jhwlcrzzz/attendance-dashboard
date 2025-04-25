@@ -18,6 +18,9 @@ DATA_CACHE_TTL_SECONDS = 4 # e.g., fetch new data only every 30 seconds max
 # Lifespan for map points
 GATE_POINT_LIFESPAN = 10 # Seconds
 
+# --- Page Config ---
+st.set_page_config(page_title="Attendance Dashboard", page_icon=":signal_strength:", layout="wide")
+
 # Custom CSS to reduce spacing around title and elements
 st.markdown("""     
 <style>
@@ -76,9 +79,6 @@ if 'last_point_add_time' not in st.session_state: # Changed from last_refresh fo
 if 'gate_points' not in st.session_state:
     st.session_state.gate_points = []
 # 'last_update_check' is no longer needed for the main refresh loop
-
-# --- Page Config ---
-st.set_page_config(page_title="Attendance Dashboard", page_icon=":signal_strength:", layout="wide")
 
 # --- Auto-Refresh Component ---
 # Run the autorefresh counter. Counts up indefinitely.
