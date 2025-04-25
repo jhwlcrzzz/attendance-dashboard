@@ -1,4 +1,10 @@
 matplotlib
 GSheetsConnection
+numpy
+pandas
+os
+time
+streamlit_gsheets
+PIL
 
 --upgrade pip
