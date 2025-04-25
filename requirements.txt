@@ -1,3 +1,5 @@
+--upgrade pip
+
 matplotlib
 GSheetsConnection
 numpy
@@ -6,5 +8,3 @@ os
 time
 streamlit_gsheets
 PIL
-
---upgrade pip
