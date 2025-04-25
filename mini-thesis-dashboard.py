@@ -251,91 +251,73 @@ with col2:
                 st.write("Corrupted Data")
                 st.caption(f"ID: {latest_ids[i+1]}")
 
-# --- COLUMN 3: Image with plotted points ---
+# --- COLUMN 3: Gate Location Map ---
 with col3:
     st.subheader("Gate Location Map")
-    
-    # Check for new gate entries
+    gate_coordinates = { # Make sure these are correct for dhvsu.jpg
+        2: (360, 100), 3: (400, 260), 4: (100, 230),
+        5: (570, 1060), 6: (560, 1120), 7: (155, 1050),
+        8: (150, 975)
+    }
+
+    # --- Update Gate Points ---
     if not filtered_df.empty:
-        latest_timestamp = filtered_df.iloc[0]["Timestamp"]
-        latest_gate = filtered_df.iloc[0]["Gate No."]
-        
-        # Dictionary to map gate numbers to coordinates (x, y)
-        # Adjust these coordinates based on your image
-        gate_coordinates = {
-            2: (360, 100),
-            3: (400, 260),
-            4: (100, 230),
-            5: (570, 1060),
-            6: (560, 1120),
-            7: (155, 1050),
-            8: (150, 975)
-        }
-        
-        # Add new point if it's a new entry
-        current_time = datetime.now()
-        if (latest_timestamp > st.session_state.last_refresh - timedelta(seconds=30)) and latest_gate in gate_coordinates:
+        latest_entry = filtered_df.iloc[0]
+        latest_timestamp = latest_entry["Timestamp"]
+        latest_gate = latest_entry["Gate No."]
+
+        # Simplified logic: Add point if timestamp is newer than last added point's time
+        # This assumes timestamps are strictly increasing for new events we care about
+        if latest_gate in gate_coordinates and \
+           (st.session_state.last_point_add_time is None or \
+            latest_timestamp > st.session_state.last_point_add_time):
+
             st.session_state.gate_points.append({
                 "gate": latest_gate,
                 "coordinates": gate_coordinates[latest_gate],
-                "created_at": current_time
+                "timestamp": latest_timestamp,
+                "created_at": datetime.now() # For lifespan tracking
             })
-            st.session_state.last_refresh = current_time
+            st.session_state.last_point_add_time = latest_timestamp # Update last added time
+            # Limit points stored
+            st.session_state.gate_points = st.session_state.gate_points[-20:]
 
-    # Remove points older than 1 second
+    # --- Remove Old Points ---
+    now_for_points = datetime.now()
     st.session_state.gate_points = [
-        point for point in st.session_state.gate_points 
-        if (datetime.now() - point["created_at"]).total_seconds() <= 1
+        point for point in st.session_state.gate_points
+        if (now_for_points - point["created_at"]).total_seconds() <= GATE_POINT_LIFESPAN # Use constant
     ]
-    
-    # Load the vertical image
-    try:
-        # Try to load the image
-        if os.path.exists("dhvsu.jpg"):
-            map_container = st.container()
-            st.caption("Source: Google Maps")
-            with map_container:
-                # Create fixed-height container for the map
-                map_height = 720  # Adjust this value to control the height
-                
-                map_image = Image.open("dhvsu.jpg")
-                
-                # Create a figure with controlled height
-                fig, ax = plt.subplots(figsize=(4, 8))
-                ax.imshow(map_image)
-                
-                # Plot all active points with bright violet color and larger size
-                violet_color = '#00FF00'  # Bright violet color (Indigo)
-                for point in st.session_state.gate_points:
-                    x, y = point["coordinates"]
-                    gate_num = point["gate"]
-                    # Much larger marker size (20 instead of 10)
-                    ax.plot(x, y, 'o', color=violet_color, markersize=8, alpha=.9)
-                    # Bold text with larger font
-                    ax.text(x+12, y+50, f"Gate{gate_num}", color='#000000', fontsize=8, bbox=dict(facecolor='#ffffff', alpha=0.69))
-                
-                ax.axis('off')  # Hide axes
-                
-                # Use a custom CSS hack to control the height
-                st.markdown(f"""
-                <style>
-                    [data-testid="stImage"] img {{
-                        max-height: {map_height}px;
-                        width: 10px;
-                        margin: auto;
-                        display: block;
-                    }}
-                </style>
-                """, unsafe_allow_html=True)
-                
-                st.pyplot(fig)
-        else:
-            st.error("Map image not found. Please upload 'dhvsu.jpg'")
-            st.write("Corrupted Data")
-            
-    except Exception as e:
-        st.error(f"Error displaying map: {str(e)}")
-        st.write("Corrupted Data")
+
+    # --- Display Map and Points ---
+    map_image_path = "dhvsu.jpg"
+    if os.path.exists(map_image_path):
+        try:
+            map_image = Image.open(map_image_path)
+            aspect_ratio = map_image.height / map_image.width if map_image.width > 0 else 1.5 # Approximate aspect ratio
+            fig_width = 5 # Adjust base width as needed
+            fig_height = fig_width * aspect_ratio
+
+            fig, ax = plt.subplots(figsize=(fig_width, fig_height))
+            ax.imshow(map_image)
+
+            point_color = '#00FF00' # Bright Green
+            for point in st.session_state.gate_points:
+                x, y = point["coordinates"]
+                gate_num = point["gate"]
+                ax.plot(x, y, 'o', color=point_color, markersize=10, alpha=0.8)
+                ax.text(x + 15, y + 10, f"Gate {gate_num}", color='black', fontsize=9,
+                        bbox=dict(facecolor='white', alpha=0.7, pad=0.2))
+
+            ax.axis('off')
+            fig.tight_layout(pad=0) # Reduce padding
+            st.pyplot(fig, use_container_width=True)
+            st.caption("Campus Map")
+
+        except Exception as e:
+            st.error(f"Error displaying map: {str(e)}")
+    else:
+        st.error(f"Map image not found at '{map_image_path}'")
 
 # --- Sidebar ---
 # Manual refresh button still useful
