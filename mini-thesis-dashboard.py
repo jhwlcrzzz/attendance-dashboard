@@ -8,6 +8,7 @@ from PIL import Image
 import io
 import numpy as np
 from datetime import datetime, timedelta
+from streamlit_autorefresh import st_autorefresh
 
 logo_path = os.path.join("sd", f"logo.jpg")
 st.logo(logo_path, size="large")
@@ -286,10 +287,12 @@ st.sidebar.button("Refresh Data", on_click=force_reload)
 st.sidebar.write(f"Last updated: {datetime.now().strftime('%H:%M:%S')}")
 
 # Check if it's time to update based on interval
-current_time = datetime.now()
-if (current_time - st.session_state.last_update_check).total_seconds() >= 2:  # Check every 3 seconds
-    st.session_state.last_update_check = current_time
-    # Clear cache to force reload
-    st.cache_data.clear()
-    # Use rerun to refresh the app
-    st.rerun()
+# DELETE THIS BLOCK:
+# Check if it's time to update based on interval
+ current_time = datetime.now()
+ if (current_time - st.session_state.last_update_check).total_seconds() >= 2:  # Check every 2 seconds
+     st.session_state.last_update_check = current_time
+     # Clear cache to force reload <<--- REMOVE THIS LOGIC
+     st.cache_data.clear()
+     # Use rerun to refresh the app
+     st.rerun()
