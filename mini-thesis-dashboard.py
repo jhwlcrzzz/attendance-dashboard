@@ -67,7 +67,7 @@ st.markdown("""
 
 # More compact title and divider
 st.title("LORA RFID-BASED UNIVERSITY ATTENDANCE SYSTEM — Dashboard")
-st.divider()
+#st.divider()
 
 # Modified cache data function with shorter TTL and error handling
 @st.cache_data(ttl=3)
