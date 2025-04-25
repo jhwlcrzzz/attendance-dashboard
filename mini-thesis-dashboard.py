@@ -1,146 +1,265 @@
 import streamlit as st
 import pandas as pd
 import os
-import time
+import time # Keep time for polling interval
 import matplotlib.pyplot as plt
 from streamlit_gsheets import GSheetsConnection
 from PIL import Image
-import io
-import numpy as np
+# import io # Not explicitly used?
+# import numpy as np # Not explicitly used?
 from datetime import datetime, timedelta
+import traceback # For detailed error logging
 
-logo_path = os.path.join("sd", f"logo.jpg")
-st.logo(logo_path, size="large")
+# --- Constants ---
+# How often to check the Google Sheet's 'Metadata' sheet for changes
+POLLING_INTERVAL_SECONDS = 10
+# Lifespan for the blinking dot on the map
+GATE_POINT_LIFESPAN = 15 # Seconds
+# Cache TTL for the *full data* (used only when a change is detected)
+# Can be relatively short now, as it's only hit after a change.
+FULL_DATA_CACHE_TTL = 60 # Seconds
+
+MAP_IMAGE_PATH = "dhvsu.jpg"
+LOGO_DIR = "sd"
+IMAGE_DIR = "sd"
+
+# --- Initialization ---
+logo_path = os.path.join(LOGO_DIR, f"logo.jpg")
+if os.path.exists(logo_path):
+    # Check Streamlit version for st.logo syntax if needed
+    try:
+        st.logo(logo_path, size="large")
+
+    
+    except AttributeError:
+        # Fallback for older Streamlit versions if st.logo doesn't exist
+        # st.sidebar.image(logo_path) # Example fallback
+        pass
+
 
 # Initialize session state variables
-if 'last_refresh' not in st.session_state:
-    st.session_state.last_refresh = datetime.now()
+if 'last_known_sheet_update_time' not in st.session_state:
+    # Initialize to a very old datetime to ensure first load
+    st.session_state.last_known_sheet_update_time = datetime.min
+if 'latest_processed_timestamp_for_points' not in st.session_state:
+    # Tracks the timestamp of the latest record used for map points
+    st.session_state.latest_processed_timestamp_for_points = None
 if 'gate_points' not in st.session_state:
     st.session_state.gate_points = []
-if 'last_update_check' not in st.session_state:
-    st.session_state.last_update_check = datetime.now() - timedelta(seconds=10)
+if 'last_poll_time' not in st.session_state:
+    # Tracks when we last checked the Metadata sheet
+    st.session_state.last_poll_time = datetime.min
+if 'full_data_last_fetch_time' not in st.session_state:
+     st.session_state.full_data_last_fetch_time = "Never Fetched"
+if 'cached_dataframe' not in st.session_state: # Store the DataFrame in session state
+     st.session_state.cached_dataframe = pd.DataFrame(columns=["Timestamp", "Gate No.", "Identification No.", "Name"])
 
-# Page configuration
-st.set_page_config(page_title="Attendace Dashboard", page_icon=":signal_strength:", layout="wide")
+# --- Page Config ---
+st.set_page_config(page_title="Attendance Dashboard", page_icon=":signal_strength:", layout="wide")
 
-# Custom CSS to reduce spacing around title and elements
-st.markdown("""     
+# --- Custom CSS (Keep your existing CSS) ---
+st.markdown("""
 <style>
-    img[data-testid="stLogo"] {
-            height: 3.5rem;
-}        
-    .block-container {
-        padding-top: 2.3rem;
-        padding-bottom: 0rem;
-    }
-    h1 {
+    /* ... (your existing CSS rules) ... */
+     .block-container {
+         padding-top: 1rem;
+         padding-bottom: 0rem;
+     }
+     h1 {
         margin-top: -10px;
-        margin-bottom: 0px;
-    }
-    div.stTitle {
-        margin-bottom: -10px;
-    }
-    .stHeadingContainer {
-        margin-top: 0px;
-        margin-bottom: 0px;
-    }
-    .stSubheader {
-        margin-bottom: -25px;
-    }
-    div[data-testid="stVerticalBlock"] > div:first-child {
-        margin-top: 0px;
-    }
-    div.stElementContainer{
-        margin-top: 0px;
-        margin-bottom: 0px;    
-    }
-    
-    /* Force main image size reduction */
-    .main-img-wrapper img {
-        max-width: 70% !important;
-        margin-left: auto !important;
-        margin-right: auto !important;
-        display: block !important;
-    }
+        margin-bottom: 10px;
+     }
+     .stSubheader {
+         margin-bottom: 5px;
+         margin-top: 10px;
+     }
+     .main-img-wrapper img {
+         max-width: 70% !important;
+         max-height: 350px;
+         object-fit: contain;
+         margin-left: auto !important;
+         margin-right: auto !important;
+         display: block !important;
+     }
 </style>
 """, unsafe_allow_html=True)
 
-# More compact title and divider
-st.title("LORA RFID-BASED UNIVERSITY ATTENDANCE SYSTEM — Dashboard")
-#st.divider()
+# --- Data Loading Functions ---
 
-# Modified cache data function with shorter TTL and error handling
-@st.cache_data(ttl=3)
-def load_data():
+# Function to get ONLY the last update timestamp from the Metadata sheet
+# Uses a very short cache or no cache to ensure frequent checking.
+@st.cache_data(ttl=5) # Short TTL for the timestamp check itself
+def get_sheet_last_update_time():
+    """Fetches the timestamp from Metadata!A1."""
     try:
-        # Connect to Google Sheets
-        conn = st.connection("gsheets", type=GSheetsConnection)
-        
-        # Force a refresh of the connection
-        conn.reset()
-        
-        # Read data from Google Sheets
-        df = conn.read(worksheet="Sheet1")
-        
-        # Filter required columns (Timestamp, Gate Number, Identification Number)
-        filtered_df = df[["Timestamp", "Gate No.", "Identification No.", "Name"]].copy()
-        
-        # Convert Timestamp to datetime format
-        filtered_df["Timestamp"] = pd.to_datetime(filtered_df["Timestamp"])
-        
-        # Handle NaN values in Gate No. and convert to integer
-        filtered_df["Gate No."] = filtered_df["Gate No."].fillna(0).astype(int)
-        
-        filtered_df = filtered_df.sort_values(by="Timestamp", ascending=False)
-        
-        return filtered_df
+        conn_meta = st.connection("gsheets", type=GSheetsConnection)
+        # Read only cell A1 from the Metadata sheet
+        meta_df = conn_meta.read(worksheet="Metadata", usecols=[0], nrows=1, header=None)
+        if not meta_df.empty:
+            # Attempt to parse the timestamp
+            timestamp_str = str(meta_df.iloc[0, 0])
+            # Google Sheets might store dates in different ways, try parsing common formats
+            try:
+                # Try standard datetime format
+                return pd.to_datetime(timestamp_str)
+            except ValueError:
+                # Add more parsing attempts if needed based on your sheet's format
+                st.warning(f"Could not parse timestamp '{timestamp_str}' from Metadata!A1. Using current time as fallback.")
+                return datetime.now() # Fallback if parsing fails
+        else:
+             st.warning("Metadata sheet or cell A1 is empty.")
+             return datetime.min # Return old date if empty
     except Exception as e:
-        st.error(f"Error loading data: {str(e)}")
-        # Return empty DataFrame if there's an error
-        return pd.DataFrame(columns=["Timestamp", "Gate No.", "Identification No.", "Name"])
+        st.error(f"Error reading Metadata sheet: {e}. Please ensure 'Metadata' sheet exists with a timestamp in A1.")
+        # traceback.print_exc() # Uncomment for detailed debug logs in console
+        return datetime.min # Return old date on error
 
-# Create a function to clear the cache and force reload
-def force_reload():
-    st.cache_data.clear()
+# Function to fetch the FULL data - cached for longer
+@st.cache_data(ttl=FULL_DATA_CACHE_TTL)
+def fetch_full_attendance_data():
+    """Fetches and processes the main attendance data from Metadata."""
+    fetch_time = datetime.now()
+    st.sidebar.info(f"Fetching full data at {fetch_time.strftime('%H:%M:%S')}...") # Indicate fetch
+    time.sleep(0.5) # Brief pause to make the message visible
+    try:
+        conn_data = st.connection("gsheets", type=GSheetsConnection)
+        df = conn_data.read(worksheet="Metadata") # Assumes main data is on Metadata
 
-filtered_df = load_data()
+        if df.empty:
+             st.warning("Main data sheet (Metadata) appears empty.")
+             return pd.DataFrame(columns=["Timestamp", "Gate No.", "Identification No.", "Name"]), fetch_time
 
-# Create three columns for layout
+        required_cols = ["Timestamp", "Gate No.", "Identification No.", "Name"]
+        if not all(col in df.columns for col in required_cols):
+             st.error(f"Missing required columns in Metadata. Need: {required_cols}")
+             return pd.DataFrame(columns=required_cols), fetch_time
+
+        filtered_df = df[required_cols].copy()
+        # Convert Timestamp, handling potential errors
+        filtered_df["Timestamp"] = pd.to_datetime(filtered_df["Timestamp"], errors='coerce')
+        initial_rows = len(filtered_df)
+        filtered_df.dropna(subset=["Timestamp"], inplace=True)
+        if len(filtered_df) < initial_rows:
+             st.warning(f"Dropped {initial_rows - len(filtered_df)} rows due to invalid Timestamps.")
+
+        # Handle Gate No. conversion
+        filtered_df["Gate No."] = pd.to_numeric(filtered_df["Gate No."], errors='coerce').fillna(0).astype(int)
+        filtered_df["Identification No."] = filtered_df["Identification No."].astype(str)
+
+        # Sort by Timestamp DESCENDING
+        filtered_df = filtered_df.sort_values(by="Timestamp", ascending=False).reset_index(drop=True)
+
+        st.sidebar.info("Data fetch complete.") # Clear fetch message
+
+        return filtered_df, fetch_time
+
+    except Exception as e:
+        st.error(f"Error loading or processing attendance data: {e}")
+        # traceback.print_exc() # Uncomment for detailed debug logs in console
+        st.sidebar.info("Data fetch failed.") # Update status
+        # Return empty DataFrame and current time on error
+        return pd.DataFrame(columns=["Timestamp", "Gate No.", "Identification No.", "Name"]), fetch_time
+
+# --- Main App Logic ---
+st.title("LORA RFID-BASED UNIVERSITY ATTENDANCE SYSTEM — Dashboard")
+
+# --- Check for Updates ---
+# Periodically check the sheet's last modification time
+current_time = datetime.now()
+if (current_time - st.session_state.last_poll_time).total_seconds() >= POLLING_INTERVAL_SECONDS:
+    st.session_state.last_poll_time = current_time # Update poll time regardless of outcome
+
+    # Get the timestamp stored in the Metadata sheet
+    actual_sheet_update_time = get_sheet_last_update_time()
+
+    # Compare with the last known update time
+    if actual_sheet_update_time > st.session_state.last_known_sheet_update_time:
+        st.success(f"Change detected in Google Sheet at {actual_sheet_update_time.strftime('%H:%M:%S')}. Reloading data.")
+        # Clear the cache for the *full data fetching function* specifically
+        # Note: st.cache_data doesn't have a simple way to clear *one* function's cache.
+        # Clearing all cache associated with @st.cache_data:
+        st.cache_data.clear()
+
+        # Fetch the updated full data
+        new_df, fetch_time = fetch_full_attendance_data()
+
+        # Update session state
+        st.session_state.cached_dataframe = new_df # Store the latest data
+        st.session_state.last_known_sheet_update_time = actual_sheet_update_time
+        st.session_state.full_data_last_fetch_time = fetch_time.strftime('%Y-%m-%d %H:%M:%S')
+        # Reset the point processor timestamp to ensure new points are added
+        st.session_state.latest_processed_timestamp_for_points = None
+        # Rerun immediately to display the new data
+        st.rerun()
+    # else:
+        # Optional: Indicate that no change was detected
+        # st.sidebar.write(f"Checked at {current_time.strftime('%H:%M:%S')}: No change detected.")
+
+# Use the DataFrame stored in session state for the dashboard display
+filtered_df = st.session_state.cached_dataframe
+
+# --- Layout Columns ---
 col1, col2, col3 = st.columns([8, 9, 5], gap='large')
 
-# --- COLUMN 1: Pie Chart and Table ---
+# --- Column 1: Metrics, Pie Chart, and Table ---
 with col1:
-    st.subheader("Time-In / Time-Out Status")
+    st.subheader("Campus Occupancy Status") # Changed subheader
     if not filtered_df.empty:
-        # Using value_counts for potentially faster calculation if dataset grows
-        id_counts = filtered_df['Identification No.'].value_counts()
-        time_in_count = (id_counts % 2 != 0).sum() # Count IDs with odd appearances (currently IN)
-        time_out_count = (id_counts % 2 == 0).sum() # Count IDs with even appearances (currently OUT)
-        # This assumes the latest record determines current status for pie chart %
-        # A more robust approach might need tracking pairs of entries per ID per day.
+        # --- IMPORTANT CAVEAT ---
+        # For the "Currently Inside" count to be accurate for *today*,
+        # ensure 'filtered_df' only contains relevant entries (e.g., entries from today).
+        # If your sheet contains historical data, you might need to filter `filtered_df` by date first:
+        # Example: today_date = pd.to_datetime('today').normalize() # Get today's date
+        # Example: relevant_df = filtered_df[filtered_df['Timestamp'] >= today_date]
+        # Example: id_counts = relevant_df['Identification No.'].value_counts()
+        # If your sheet *only* has today's data or relevant logs, you can use filtered_df directly.
 
-        # Create pie chart
+        # Calculate counts based on the relevant data
+        id_counts = filtered_df['Identification No.'].value_counts() # Use relevant_df if filtered by date
+
+        # Calculate number of people presumed inside (odd number of logs)
+        people_inside_count = (id_counts % 2 != 0).sum()
+
+        # Calculate number of people presumed outside (even number of logs for those who entered today)
+        # Note: This counts people who entered *and* left today/within the data scope.
+        people_outside_count = (id_counts % 2 == 0).sum()
+
+        # Total unique individuals logged within the data scope
+        total_unique_logged = len(id_counts)
+
+        # --- Display Metrics ---
+        st.metric("People Currently Inside Campus", people_inside_count)
+        # You could add other metrics if useful
+        # st.metric("People Logged Out (Today)", people_outside_count)
+        # st.metric("Total Unique Individuals Logged (Today)", total_unique_logged)
+        st.divider() # Add a visual separator
+
+        # --- Create Pie Chart (Optional but still useful visual) ---
+        st.write("Inside/Outside Ratio") # Add a small title for the chart
         fig, ax = plt.subplots(figsize=(4, 3)) # Adjust size as needed
         labels = ['Inside', 'Outside']
-        sizes = [time_in_count, time_out_count]
-        colors = ['#7d171e','#c1ab43'] # Swapped colors: Maroon for Inside, Gold for Outside
-        if sum(sizes) > 0: # Avoid division by zero if no data
-            ax.pie(sizes, labels=labels, autopct='%1.1f%%', startangle=90, colors=colors, pctdistance=0.80, explode=(0.05, 0.05))
-        else:
-             ax.pie([1], labels=['No Data'], colors=['lightgrey']) # Placeholder if no data
-        ax.axis('equal')
-        centre_circle = plt.Circle((0, 0), 0.60, fc='white')
-        fig.gca().add_artist(centre_circle)
-        st.pyplot(fig, use_container_width=True) # Let streamlit manage width
+        # Use the calculated counts for the pie chart
+        sizes = [people_inside_count, people_outside_count]
+        colors = ['#7d171e','#c1ab43'] # Maroon = Inside, Gold = Outside
 
-        st.metric("People inside the campus", len(id_counts))
+        if sum(sizes) > 0:
+            ax.pie(sizes, labels=labels, autopct='%1.1f%%', startangle=90, colors=colors, pctdistance=0.80, explode=(0.05, 0.05))
+            ax.axis('equal')
+            centre_circle = plt.Circle((0, 0), 0.60, fc='white')
+            fig.gca().add_artist(centre_circle)
+        else:
+             # Placeholder if no data
+             ax.pie([1], labels=['No Data'], colors=['lightgrey'])
+             ax.axis('equal')
+
+        st.pyplot(fig, use_container_width=True)
 
     else:
-        st.info("No attendance data loaded.")
+        st.info("No attendance data available.")
+        st.metric("People Currently Inside Campus", 0) # Show 0 if no data
 
     st.subheader("Latest Entries")
-    # Use st.dataframe for potentially better display options
-    st.table(filtered_df.head(4))
+    st.dataframe(filtered_df.head(4))
 
 # --- COLUMN 2: Image Gallery ---
 with col2:
@@ -186,110 +305,96 @@ with col2:
                 st.write("Corrupted Data")
                 st.caption(f"ID: {latest_ids[i+1]}")
 
-# --- COLUMN 3: Image with plotted points ---
+# --- Column 3: Gate Location Map ---
 with col3:
-    st.subheader("Gate Location Map")
-    
-    # Check for new gate entries
+    st.subheader("Gate Activity Map")
+    gate_coordinates = {
+        2: (360, 100), 3: (400, 260), 4: (100, 230),
+        5: (570, 1060), 6: (560, 1120), 7: (155, 1050),
+        8: (150, 975)
+    }
+
+    # --- Update Gate Points (using data from session state) ---
     if not filtered_df.empty:
-        latest_timestamp = filtered_df.iloc[0]["Timestamp"]
-        latest_gate = filtered_df.iloc[0]["Gate No."]
-        
-        # Dictionary to map gate numbers to coordinates (x, y)
-        # Adjust these coordinates based on your image
-        gate_coordinates = {
-            2: (360, 100),
-            3: (400, 260),
-            4: (100, 230),
-            5: (570, 1060),
-            6: (560, 1120),
-            7: (155, 1050),
-            8: (150, 975)
-        }
-        
-        # Add new point if it's a new entry
-        current_time = datetime.now()
-        if (latest_timestamp > st.session_state.last_refresh - timedelta(seconds=10)) and latest_gate in gate_coordinates:
+        latest_entry = filtered_df.iloc[0]
+        latest_timestamp = latest_entry["Timestamp"]
+        latest_gate = latest_entry["Gate No."]
+
+        # Check if this entry's timestamp is newer than the last one processed *for points*
+        if latest_gate in gate_coordinates and \
+           (st.session_state.latest_processed_timestamp_for_points is None or \
+            latest_timestamp > st.session_state.latest_processed_timestamp_for_points):
+
             st.session_state.gate_points.append({
                 "gate": latest_gate,
                 "coordinates": gate_coordinates[latest_gate],
-                "created_at": current_time
+                "timestamp": latest_timestamp, # Store actual event time
+                "created_at": datetime.now() # For lifespan tracking
             })
-            st.session_state.last_refresh = current_time
+            st.session_state.latest_processed_timestamp_for_points = latest_timestamp
+            # Optional: Limit the total number of points stored
+            st.session_state.gate_points = st.session_state.gate_points[-20:] # Keep last 20 points
 
-    # Remove points older than 1 second
+    # --- Remove Old Points ---
+    now_for_points = datetime.now()
     st.session_state.gate_points = [
-        point for point in st.session_state.gate_points 
-        if (datetime.now() - point["created_at"]).total_seconds() <= 1
+        point for point in st.session_state.gate_points
+        if (now_for_points - point["created_at"]).total_seconds() <= GATE_POINT_LIFESPAN
     ]
-    
-    # Load the vertical image
-    try:
-        # Try to load the image
-        if os.path.exists("dhvsu.jpg"):
-            map_container = st.container()
-            st.caption("Source: Google Maps")
-            with map_container:
-                # Create fixed-height container for the map
-                map_height = 720  # Adjust this value to control the height
-                
-                map_image = Image.open("dhvsu.jpg")
-                
-                # Create a figure with controlled height
-                fig, ax = plt.subplots(figsize=(4, 8))
-                ax.imshow(map_image)
-                
-                # Plot all active points with bright violet color and larger size
-                violet_color = '#00FF00'  # Bright violet color (Indigo)
-                for point in st.session_state.gate_points:
-                    x, y = point["coordinates"]
-                    gate_num = point["gate"]
-                    # Much larger marker size (20 instead of 10)
-                    ax.plot(x, y, 'o', color=violet_color, markersize=8, alpha=.9)
-                    # Bold text with larger font
-                    ax.text(x+12, y+50, f"Gate{gate_num}", color='#000000', fontsize=8, bbox=dict(facecolor='#ffffff', alpha=0.69))
-                
-                ax.axis('off')  # Hide axes
-                
-                
-                # Add fake points for testing - REMOVE IN PRODUCTION
-                # This will help you see if the points are being displayed correctly
-#                for gate_num, coords in gate_coordinates.items():
-#                    x, y = coords
-#                    ax.plot(x, y, 'o', color=violet_color, markersize=8, alpha=.9)
-#                    ax.text(x+12, y+50, f"Gate{gate_num}", color='#000000', fontsize=8, bbox=dict(facecolor='#ffffff', alpha=0.69))
 
-                
-                # Use a custom CSS hack to control the height
-                st.markdown(f"""
-                <style>
-                    [data-testid="stImage"] img {{
-                        max-height: {map_height}px;
-                        width: 10px;
-                        margin: auto;
-                        display: block;
-                    }}
-                </style>
-                """, unsafe_allow_html=True)
-                
-                st.pyplot(fig)
-        else:
-            st.error("Map image not found. Please upload 'dhvsu.jpg'")
-            st.write("Corrupted Data")
-            
-    except Exception as e:
-        st.error(f"Error displaying map: {str(e)}")
-        st.write("Corrupted Data")
+    # --- Display Map and Points ---
+    if os.path.exists(MAP_IMAGE_PATH):
+        try:
+            map_image = Image.open(MAP_IMAGE_PATH)
+            aspect_ratio = map_image.height / map_image.width if map_image.width > 0 else 1
+            fig_width = 5
+            fig_height = fig_width * aspect_ratio
+            fig, ax = plt.subplots(figsize=(fig_width, fig_height))
+            ax.imshow(map_image)
 
-# Add a refresh button and display the last refresh time
-st.sidebar.button("Refresh Data", on_click=force_reload)
-st.sidebar.write(f"Last updated: {datetime.now().strftime('%H:%M:%S')}")
+            point_color = '#00FF00' # Bright Green
+            for point in st.session_state.gate_points:
+                x, y = point["coordinates"]
+                gate_num = point["gate"]
+                ax.plot(x, y, 'o', color='#00FF00', markersize=16, alpha=.9)
+                ax.text(x+12, y+50, f"Gate{gate_num}", color='#000000', fontsize=23, 
+                        bbox=dict(facecolor='#ffffff', alpha=0.69))
 
-# Check if it's time to update based on interval
-current_time = datetime.now()
-if (current_time - st.session_state.last_update_check).total_seconds() >= 2:  # Check every 3 seconds
-    st.session_state.last_update_check = current_time
-    # Clear cache to force reload
-    st.cache_data.clear()
-    # Use rerun to refresh the app
+            ax.axis('off')
+            fig.tight_layout(pad=0)
+            st.pyplot(fig, use_container_width=True)
+            st.caption("DHVSU Campus Map") # Adjust source if needed
+
+        except Exception as e:
+            st.error(f"Error displaying map: {str(e)}")
+            # traceback.print_exc() # Uncomment for detailed debug logs
+    else:
+        st.error(f"Map image not found at '{MAP_IMAGE_PATH}'")
+
+
+# --- Sidebar ---
+# Manual Refresh Button (still useful for troubleshooting or forcing a check)
+if st.sidebar.button("Check for Updates Now", use_container_width=True):
+    st.cache_data.clear() # Clear cache on manual check
+    st.session_state.last_known_sheet_update_time = datetime.min # Force re-check
     st.rerun()
+
+st.sidebar.write(f"Sheet Last Update: {st.session_state.last_known_sheet_update_time.strftime('%Y-%m-%d %H:%M:%S') if isinstance(st.session_state.last_known_sheet_update_time, datetime) else 'Unknown'}")
+st.sidebar.write(f"Data Last Fetched: {st.session_state.full_data_last_fetch_time}")
+st.sidebar.write(f"Last Checked: {st.session_state.last_poll_time.strftime('%H:%M:%S')}")
+
+
+# --- Auto-Polling Trigger ---
+# This ensures the check runs periodically without user interaction
+# This replaces the simple auto-refresh st.rerun() loop at the end.
+# We trigger the check within the main logic block based on POLLING_INTERVAL_SECONDS
+# We need a mechanism to force Streamlit to rerun periodically to *enable* the check.
+# Use st.empty() and time.sleep() in a loop at the very end for background polling trigger.
+
+# Placeholder at the end of the script to trigger reruns for polling
+# Note: time.sleep() blocks execution, so the polling interval effectively becomes
+# POLLING_INTERVAL_SECONDS + script execution time. Adjust interval if needed.
+placeholder = st.empty()
+with placeholder:
+    time.sleep(POLLING_INTERVAL_SECONDS) # Wait for the polling interval
+    st.rerun() # Trigger a rerun to perform the check at the top
