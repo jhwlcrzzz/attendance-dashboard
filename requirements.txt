@@ -3,4 +3,4 @@ matplotlib
 numpy
 pandas
 st-gsheets-connection
-pip install gspread
+gspread
