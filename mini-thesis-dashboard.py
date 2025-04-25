@@ -1,25 +1,27 @@
 import streamlit as st
 import pandas as pd
 import os
-import time # Keep for potential use elsewhere, but not for the main refresh loop
+import time
 import matplotlib.pyplot as plt
 from streamlit_gsheets import GSheetsConnection
 from PIL import Image
-# import io # Not explicitly used?
-# import numpy as np # Not explicitly used?
+import io   
+import numpy as np
 from datetime import datetime, timedelta
-from streamlit_autorefresh import st_autorefresh # <--- IMPORT
 
-# --- Configuration ---
-# How often to rerun the Streamlit script (updates UI, checks for points)
-APP_REFRESH_INTERVAL_SECONDS = 5 # e.g., rerun every 5 seconds
-# How long to cache data from Google Sheets (reduces API calls)
-DATA_CACHE_TTL_SECONDS = 4 # e.g., fetch new data only every 30 seconds max
-# Lifespan for map points
-GATE_POINT_LIFESPAN = 10 # Seconds
+logo_path = os.path.join("sd", f"logo.jpg")
+st.logo(logo_path, size="large")
 
-# --- Page Config ---
-st.set_page_config(page_title="Attendance Dashboard", page_icon=":signal_strength:", layout="wide")
+# Initialize session state variables
+if 'last_refresh' not in st.session_state:
+    st.session_state.last_refresh = datetime.now()
+if 'gate_points' not in st.session_state:
+    st.session_state.gate_points = []
+if 'last_update_check' not in st.session_state:
+    st.session_state.last_update_check = datetime.now() - timedelta(seconds=10)
+
+# Page configuration
+st.set_page_config(page_title="Attendace Dashboard", page_icon=":signal_strength:", layout="wide")
 
 # Custom CSS to reduce spacing around title and elements
 st.markdown("""     
@@ -63,117 +65,50 @@ st.markdown("""
 </style>
 """, unsafe_allow_html=True)
 
-# --- Initialization ---
-logo_path = os.path.join("sd", f"logo.jpg")
-# Use try-except for potentially changing st.logo syntax or if file missing
-try:
-    if os.path.exists(logo_path):
-        st.logo(logo_path) # Removed size="large", seems invalid param
-except Exception:
-    st.sidebar.warning("Logo image not found or st.logo error.")
-
-
-# Initialize session state variables
-if 'last_point_add_time' not in st.session_state: # Changed from last_refresh for clarity
-    st.session_state.last_point_add_time = datetime.min
-if 'gate_points' not in st.session_state:
-    st.session_state.gate_points = []
-# 'last_update_check' is no longer needed for the main refresh loop
-
-# --- Auto-Refresh Component ---
-# Run the autorefresh counter. Counts up indefinitely.
-# The interval is in milliseconds, so multiply seconds by 1000.
-# The key is optional but helpful if you have multiple autorefresh components.
-refresh_count = st_autorefresh(interval=APP_REFRESH_INTERVAL_SECONDS * 1000, limit=None, key="dashboard_refresh")
-st.sidebar.write(f"Dashboard Running (Refresh Count: {refresh_count})") # Show counter to verify it's running
-
-# --- Custom CSS (Keep your existing CSS) ---
-st.markdown("""
-<style>
-    /* ... (your existing CSS rules) ... */
-     img[data-testid="stLogo"] { height: 3.5rem; }
-     .block-container { padding-top: 1rem; padding-bottom: 0rem; }
-     h1 { margin-top: -10px; margin-bottom: 10px; }
-     .stSubheader { margin-bottom: 5px; margin-top: 10px; }
-     .main-img-wrapper img { max-width: 70% !important; max-height: 350px; object-fit: contain; margin-left: auto !important; margin-right: auto !important; display: block !important; }
-     /* Remove or fix the map image CSS if it was causing issues */
-     /* [data-testid="stImage"] img { max-height: 720px; width: 10px; ... } */
-</style>
-""", unsafe_allow_html=True)
-
-# --- Title ---
+# More compact title and divider
 st.title("LORA RFID-BASED UNIVERSITY ATTENDANCE SYSTEM — Dashboard")
+#st.divider()
 
-# --- Data Loading Function (Optimized) ---
-@st.cache_data(ttl=DATA_CACHE_TTL_SECONDS) # Use configured TTL
+# Modified cache data function with shorter TTL and error handling
+@st.cache_data(ttl=3)
 def load_data():
-    """Fetches and processes data from Google Sheets."""
-    st.sidebar.info(f"Fetching data from Google Sheet (Cache TTL: {DATA_CACHE_TTL_SECONDS}s)...")
-    start_time = time.time()
     try:
+        # Connect to Google Sheets
         conn = st.connection("gsheets", type=GSheetsConnection)
-        # conn.reset() # <--- REMOVE THIS - Increases load, usually not needed
-        df = conn.read(worksheet="Sheet1") # Ensure sheet name is correct
-
-        if df.empty:
-            st.warning("Sheet1 appears empty.")
-            return pd.DataFrame(columns=["Timestamp", "Gate No.", "Identification No.", "Name"])
-
-        # --- Column Handling ---
-        required_cols = ["Timestamp", "Gate No.", "Identification No.", "Name"]
-        actual_cols = df.columns.tolist()
-        missing_cols = [col for col in required_cols if col not in actual_cols]
-        if missing_cols:
-             st.error(f"FATAL: Missing required columns in Sheet1: {missing_cols}.")
-             return pd.DataFrame(columns=required_cols) # Return empty on critical error
-
-        filtered_df = df[required_cols].copy()
-        # --- End Column Handling ---
-
-        # --- Type Conversions ---
-        # Convert Timestamp, drop invalid rows
-        initial_rows = len(filtered_df)
-        filtered_df["Timestamp"] = pd.to_datetime(filtered_df["Timestamp"], errors='coerce')
-        filtered_df.dropna(subset=["Timestamp"], inplace=True)
-        if len(filtered_df) < initial_rows:
-             st.warning(f"Dropped {initial_rows - len(filtered_df)} rows due to invalid Timestamps.")
-
-        # Convert Gate No.
-        filtered_df["Gate No."] = pd.to_numeric(filtered_df["Gate No."], errors='coerce').fillna(0).astype(int)
-        # Convert ID to string
-        filtered_df["Identification No."] = filtered_df["Identification No."].astype(str)
-        # --- End Type Conversions ---
-
-        # Sort by Timestamp DESCENDING
-        if not filtered_df.empty:
-            filtered_df = filtered_df.sort_values(by="Timestamp", ascending=False).reset_index(drop=True)
-
-        end_time = time.time()
-        st.sidebar.info(f"Data fetch successful ({end_time - start_time:.2f}s). DF shape: {filtered_df.shape}")
+        
+        # Force a refresh of the connection
+        conn.reset()
+        
+        # Read data from Google Sheets
+        df = conn.read(worksheet="Sheet1")
+        
+        # Filter required columns (Timestamp, Gate Number, Identification Number)
+        filtered_df = df[["Timestamp", "Gate No.", "Identification No.", "Name"]].copy()
+        
+        # Convert Timestamp to datetime format
+        filtered_df["Timestamp"] = pd.to_datetime(filtered_df["Timestamp"])
+        
+        # Handle NaN values in Gate No. and convert to integer
+        filtered_df["Gate No."] = filtered_df["Gate No."].fillna(0).astype(int)
+        
+        filtered_df = filtered_df.sort_values(by="Timestamp", ascending=False)
+        
         return filtered_df
-
     except Exception as e:
-        st.error(f"Error loading data: {e}")
-        # import traceback # Uncomment for detailed stack trace in logs
-        # traceback.print_exc()
-        st.sidebar.error("Data fetch failed.")
-        # Return empty DataFrame on error
+        st.error(f"Error loading data: {str(e)}")
+        # Return empty DataFrame if there's an error
         return pd.DataFrame(columns=["Timestamp", "Gate No.", "Identification No.", "Name"])
 
-# --- Manual Refresh Function ---
-# Still useful for immediate cache clear + fetch
+# Create a function to clear the cache and force reload
 def force_reload():
     st.cache_data.clear()
-    st.rerun() # Rerun after clearing cache
 
-# --- Load Data ---
-# This now uses the cache correctly. It only runs the full function
-# when the cache expires (DATA_CACHE_TTL_SECONDS) or is cleared by force_reload.
 filtered_df = load_data()
 
-# --- Layout ---
+# Create three columns for layout
 col1, col2, col3 = st.columns([8, 9, 5], gap='large')
 
+# --- COLUMN 1: Pie Chart and Table ---
 with col1:
     st.subheader("Time-In / Time-Out Status")
     if not filtered_df.empty:
@@ -251,80 +186,110 @@ with col2:
                 st.write("Corrupted Data")
                 st.caption(f"ID: {latest_ids[i+1]}")
 
-# --- COLUMN 3: Gate Location Map ---
+# --- COLUMN 3: Image with plotted points ---
 with col3:
     st.subheader("Gate Location Map")
-    gate_coordinates = { # Make sure these are correct for dhvsu.jpg
-        2: (360, 100), 3: (400, 260), 4: (100, 230),
-        5: (570, 1060), 6: (560, 1120), 7: (155, 1050),
-        8: (150, 975)
-    }
-
-    # --- Update Gate Points ---
+    
+    # Check for new gate entries
     if not filtered_df.empty:
-        latest_entry = filtered_df.iloc[0]
-        latest_timestamp = latest_entry["Timestamp"]
-        latest_gate = latest_entry["Gate No."]
-
-        # Simplified logic: Add point if timestamp is newer than last added point's time
-        # This assumes timestamps are strictly increasing for new events we care about
-        if latest_gate in gate_coordinates and \
-           (st.session_state.last_point_add_time is None or \
-            latest_timestamp > st.session_state.last_point_add_time):
-
+        latest_timestamp = filtered_df.iloc[0]["Timestamp"]
+        latest_gate = filtered_df.iloc[0]["Gate No."]
+        
+        # Dictionary to map gate numbers to coordinates (x, y)
+        # Adjust these coordinates based on your image
+        gate_coordinates = {
+            2: (360, 100),
+            3: (400, 260),
+            4: (100, 230),
+            5: (570, 1060),
+            6: (560, 1120),
+            7: (155, 1050),
+            8: (150, 975)
+        }
+        
+        # Add new point if it's a new entry
+        current_time = datetime.now()
+        if (latest_timestamp > st.session_state.last_refresh - timedelta(seconds=10)) and latest_gate in gate_coordinates:
             st.session_state.gate_points.append({
                 "gate": latest_gate,
                 "coordinates": gate_coordinates[latest_gate],
-                "timestamp": latest_timestamp,
-                "created_at": datetime.now() # For lifespan tracking
+                "created_at": current_time
             })
-            st.session_state.last_point_add_time = latest_timestamp # Update last added time
-            # Limit points stored
-            st.session_state.gate_points = st.session_state.gate_points[-20:]
+            st.session_state.last_refresh = current_time
 
-    # --- Remove Old Points ---
-    now_for_points = datetime.now()
+    # Remove points older than 1 second
     st.session_state.gate_points = [
-        point for point in st.session_state.gate_points
-        if (now_for_points - point["created_at"]).total_seconds() <= GATE_POINT_LIFESPAN # Use constant
+        point for point in st.session_state.gate_points 
+        if (datetime.now() - point["created_at"]).total_seconds() <= 1
     ]
+    
+    # Load the vertical image
+    try:
+        # Try to load the image
+        if os.path.exists("dhvsu.jpg"):
+            map_container = st.container()
+            st.caption("Source: Google Maps")
+            with map_container:
+                # Create fixed-height container for the map
+                map_height = 720  # Adjust this value to control the height
+                
+                map_image = Image.open("dhvsu.jpg")
+                
+                # Create a figure with controlled height
+                fig, ax = plt.subplots(figsize=(4, 8))
+                ax.imshow(map_image)
+                
+                # Plot all active points with bright violet color and larger size
+                violet_color = '#00FF00'  # Bright violet color (Indigo)
+                for point in st.session_state.gate_points:
+                    x, y = point["coordinates"]
+                    gate_num = point["gate"]
+                    # Much larger marker size (20 instead of 10)
+                    ax.plot(x, y, 'o', color=violet_color, markersize=8, alpha=.9)
+                    # Bold text with larger font
+                    ax.text(x+12, y+50, f"Gate{gate_num}", color='#000000', fontsize=8, bbox=dict(facecolor='#ffffff', alpha=0.69))
+                
+                ax.axis('off')  # Hide axes
+                
+                
+                # Add fake points for testing - REMOVE IN PRODUCTION
+                # This will help you see if the points are being displayed correctly
+#                for gate_num, coords in gate_coordinates.items():
+#                    x, y = coords
+#                    ax.plot(x, y, 'o', color=violet_color, markersize=8, alpha=.9)
+#                    ax.text(x+12, y+50, f"Gate{gate_num}", color='#000000', fontsize=8, bbox=dict(facecolor='#ffffff', alpha=0.69))
 
-    # --- Display Map and Points ---
-    map_image_path = "dhvsu.jpg"
-    if os.path.exists(map_image_path):
-        try:
-            map_image = Image.open(map_image_path)
-            aspect_ratio = map_image.height / map_image.width if map_image.width > 0 else 1.5 # Approximate aspect ratio
-            fig_width = 5 # Adjust base width as needed
-            fig_height = fig_width * aspect_ratio
+                
+                # Use a custom CSS hack to control the height
+                st.markdown(f"""
+                <style>
+                    [data-testid="stImage"] img {{
+                        max-height: {map_height}px;
+                        width: 10px;
+                        margin: auto;
+                        display: block;
+                    }}
+                </style>
+                """, unsafe_allow_html=True)
+                
+                st.pyplot(fig)
+        else:
+            st.error("Map image not found. Please upload 'dhvsu.jpg'")
+            st.write("Corrupted Data")
+            
+    except Exception as e:
+        st.error(f"Error displaying map: {str(e)}")
+        st.write("Corrupted Data")
 
-            fig, ax = plt.subplots(figsize=(fig_width, fig_height))
-            ax.imshow(map_image)
+# Add a refresh button and display the last refresh time
+st.sidebar.button("Refresh Data", on_click=force_reload)
+st.sidebar.write(f"Last updated: {datetime.now().strftime('%H:%M:%S')}")
 
-            point_color = '#00FF00' # Bright Green
-            for point in st.session_state.gate_points:
-                x, y = point["coordinates"]
-                gate_num = point["gate"]
-                ax.plot(x, y, 'o', color=point_color, markersize=10, alpha=0.8)
-                ax.text(x + 15, y + 10, f"Gate {gate_num}", color='black', fontsize=9,
-                        bbox=dict(facecolor='white', alpha=0.7, pad=0.2))
-
-            ax.axis('off')
-            fig.tight_layout(pad=0) # Reduce padding
-            st.pyplot(fig, use_container_width=True)
-            st.caption("Campus Map")
-
-        except Exception as e:
-            st.error(f"Error displaying map: {str(e)}")
-    else:
-        st.error(f"Map image not found at '{map_image_path}'")
-
-# --- Sidebar ---
-# Manual refresh button still useful
-st.sidebar.button("Refresh Data Now", on_click=force_reload, use_container_width=True)
-# Display last fetch time using info from load_data return? No, load_data doesn't return time.
-# Simplest is to just show when the page last reran via the component.
-st.sidebar.write(f"Data cached for: {DATA_CACHE_TTL_SECONDS}s") # Info
-
-# --- NO LONGER NEEDED: Old auto-refresh logic ---
-# The st_autorefresh component handles the reruns now.
+# Check if it's time to update based on interval
+current_time = datetime.now()
+if (current_time - st.session_state.last_update_check).total_seconds() >= 2:  # Check every 3 seconds
+    st.session_state.last_update_check = current_time
+    # Clear cache to force reload
+    st.cache_data.clear()
+    # Use rerun to refresh the app
+    st.rerun()
