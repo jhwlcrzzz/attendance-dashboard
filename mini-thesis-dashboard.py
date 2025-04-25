@@ -274,7 +274,7 @@ with col3:
         
         # Add new point if it's a new entry
         current_time = datetime.now()
-        if (latest_timestamp > st.session_state.last_refresh - timedelta(seconds=0)) and latest_gate in gate_coordinates:
+        if (latest_timestamp > st.session_state.last_refresh - timedelta(seconds=30)) and latest_gate in gate_coordinates:
             st.session_state.gate_points.append({
                 "gate": latest_gate,
                 "coordinates": gate_coordinates[latest_gate],
