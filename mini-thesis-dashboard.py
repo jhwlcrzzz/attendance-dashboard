@@ -297,7 +297,7 @@ with col3:
 st.sidebar.button("Refresh Data Now", on_click=force_reload, use_container_width=True)
 # Display last fetch time using info from load_data return? No, load_data doesn't return time.
 # Simplest is to just show when the page last reran via the component.
- st.sidebar.write(f"Data cached for: {DATA_CACHE_TTL_SECONDS}s") # Info
+st.sidebar.write(f"Data cached for: {DATA_CACHE_TTL_SECONDS}s") # Info
 
 # --- NO LONGER NEEDED: Old auto-refresh logic ---
 # The st_autorefresh component handles the reruns now.
