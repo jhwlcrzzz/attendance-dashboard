@@ -3,4 +3,4 @@ matplotlib
 numpy
 pandas
 
-streamlit_gsheets
+streamlit-gsheets
