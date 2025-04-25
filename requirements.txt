@@ -1,5 +1,3 @@
-pip install --upgrade pip
-
 matplotlib
 GSheetsConnection
 numpy
