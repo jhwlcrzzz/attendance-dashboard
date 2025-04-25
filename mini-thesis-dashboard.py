@@ -87,32 +87,33 @@ st.markdown("""
 # --- Data Loading Functions ---
 
 # Function to get ONLY the last update timestamp from the Metadata sheet
+
+
 # Uses a very short cache or no cache to ensure frequent checking.
-@st.cache_data(ttl=5) # Short TTL for the timestamp check itself
+@@st.cache_data(ttl=5)
 def get_sheet_last_update_time():
-    """Fetches the timestamp from Metadata!A1."""
+    st.write("Attempting to read Metadata sheet...") # Add debug print
     try:
         conn_meta = st.connection("gsheets", type=GSheetsConnection)
-        # Read only cell A1 from the Metadata sheet
-        meta_df = conn_meta.read(worksheet="Metadata", usecols=[0], nrows=1, header=None)
-        if not meta_df.empty:
-            # Attempt to parse the timestamp
-            timestamp_str = str(meta_df.iloc[0, 0])
-            # Google Sheets might store dates in different ways, try parsing common formats
-            try:
-                # Try standard datetime format
+        # Try reading a slightly larger range, maybe A1:B2
+        meta_df = conn_meta.read(worksheet="Metadata", range="A1:B2") # Use range instead of usecols/nrows
+        st.write("Read result (Debug):", meta_df) # Display what was read
+        if not meta_df.empty and 'A' in meta_df.columns and not pd.isna(meta_df.loc[0, 'A']): # Check if A1 has content
+             timestamp_str = str(meta_df.loc[0, 'A']) # Access using standard loc/iloc
+             st.write(f"Found value in A1: {timestamp_str}") # Debug print
+             try:
                 return pd.to_datetime(timestamp_str)
-            except ValueError:
-                # Add more parsing attempts if needed based on your sheet's format
-                st.warning(f"Could not parse timestamp '{timestamp_str}' from Metadata!A1. Using current time as fallback.")
-                return datetime.now() # Fallback if parsing fails
+             except ValueError:
+                st.warning(f"Could not parse timestamp '{timestamp_str}' from Metadata!A1.")
+                return datetime.now()
         else:
-             st.warning("Metadata sheet or cell A1 is empty.")
-             return datetime.min # Return old date if empty
+             st.warning(f"Metadata sheet or cell A1 appears empty based on debug read. DataFrame empty: {meta_df.empty}")
+             return datetime.min
     except Exception as e:
-        st.error(f"Error reading Metadata sheet: {e}. Please ensure 'Metadata' sheet exists with a timestamp in A1.")
-        # traceback.print_exc() # Uncomment for detailed debug logs in console
-        return datetime.min # Return old date on error
+        st.error(f"Error reading Metadata sheet: {e}.")
+        # traceback.print_exc() # Uncomment for more details in console log
+        return datetime.min
+
 
 # Function to fetch the FULL data - cached for longer
 @st.cache_data(ttl=FULL_DATA_CACHE_TTL)
