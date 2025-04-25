@@ -110,41 +110,36 @@ col1, col2, col3 = st.columns([8, 9, 5], gap='large')
 
 # --- COLUMN 1: Pie Chart and Table ---
 with col1:
-    # Calculate time-in and time-out
-    time_in_count = 0
-    time_out_count = 0
-    id_appearances = {}
-    
-    # Count appearances of each ID for time-in/time-out calculation
-    for id_num in filtered_df["Identification No."]:
-        if id_num in id_appearances:
-            id_appearances[id_num] += 1
-            if id_appearances[id_num] % 2 == 0:
-                time_out_count += 1
+    st.subheader("Time-In / Time-Out Status")
+    if not filtered_df.empty:
+        # Using value_counts for potentially faster calculation if dataset grows
+        id_counts = filtered_df['Identification No.'].value_counts()
+        time_in_count = (id_counts % 2 != 0).sum() # Count IDs with odd appearances (currently IN)
+        time_out_count = (id_counts % 2 == 0).sum() # Count IDs with even appearances (currently OUT)
+        # This assumes the latest record determines current status for pie chart %
+        # A more robust approach might need tracking pairs of entries per ID per day.
+
+        # Create pie chart
+        fig, ax = plt.subplots(figsize=(4, 3)) # Adjust size as needed
+        labels = ['Inside', 'Outside']
+        sizes = [time_in_count, time_out_count]
+        colors = ['#7d171e','#c1ab43'] # Swapped colors: Maroon for Inside, Gold for Outside
+        if sum(sizes) > 0: # Avoid division by zero if no data
+            ax.pie(sizes, labels=labels, autopct='%1.1f%%', startangle=90, colors=colors, pctdistance=0.80, explode=(0.05, 0.05))
         else:
-            id_appearances[id_num] = 1
-            time_in_count += 1
-    
-    # Calculate total number of unique persons
-    total_persons = len(id_appearances)
-    
-    # Create pie chart with maroon and gold colors
-    st.subheader("Time-in and time-out counter")
-    
-    fig, ax = plt.subplots(figsize=(4, 3))  # Slightly smaller figure
-    labels = ['Time-in', 'Time-out']
-    sizes = [time_in_count, time_out_count]
-    colors = ['#c1ab43', '#7d171e']  # Maroon and Gold
-    ax.pie(sizes, labels=labels, autopct='%1.1f%%', startangle=90, colors=colors, pctdistance=0.77  , 
-        explode=(0.05, 0.05))
-    ax.axis('equal')  # Equal aspect ratio ensures the pie chart is circular
-    centre_circle = plt.Circle((0, 0), 0.60, fc='white') # center circle
-    fig = plt.gcf()
-    fig.gca().add_artist(centre_circle)
-    st.pyplot(fig)
-    
-    # Show latest entries in a table
+             ax.pie([1], labels=['No Data'], colors=['lightgrey']) # Placeholder if no data
+        ax.axis('equal')
+        centre_circle = plt.Circle((0, 0), 0.60, fc='white')
+        fig.gca().add_artist(centre_circle)
+        st.pyplot(fig, use_container_width=True) # Let streamlit manage width
+
+        st.metric("People inside the campus", len(id_counts))
+
+    else:
+        st.info("No attendance data loaded.")
+
     st.subheader("Latest Entries")
+    # Use st.dataframe for potentially better display options
     st.table(filtered_df.head(4))
 
 # --- COLUMN 2: Image Gallery ---
