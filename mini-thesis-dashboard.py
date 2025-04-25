@@ -151,6 +151,7 @@ with col1:
         # --- CORRECTED METRIC ---
         # Display the actual calculated count of people inside
         st.metric("People inside the campus", time_in_count)
+        st.metric("Total Unique Persons Today (Approx)", len(id_counts))
         # --- END CORRECTION ---
 
     else:
