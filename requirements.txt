@@ -1,6 +1,5 @@
 matplotlib
 numpy
 pandas
-os
 time
 PIL
