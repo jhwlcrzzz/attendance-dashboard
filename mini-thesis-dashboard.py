@@ -250,35 +250,79 @@ st.title("LORA RFID-BASED UNIVERSITY ATTENDANCE SYSTEM — Dashboard")
 
 # --- Check for Updates ---
 # Periodically check the sheet's last modification time
+# --- Check for Updates ---
 current_time = datetime.now()
-if (current_time - st.session_state.last_poll_time).total_seconds() >= POLLING_INTERVAL_SECONDS:
-    st.session_state.last_poll_time = current_time # Update poll time regardless of outcome
+st.sidebar.markdown("--- Update Check ---") # Sidebar separator
+st.sidebar.write(f"Current Time: {current_time.strftime('%H:%M:%S')}")
+st.sidebar.write(f"Last Poll Time: {st.session_state.last_poll_time.strftime('%H:%M:%S')}")
+st.sidebar.write(f"Check Interval: {POLLING_INTERVAL_SECONDS}s")
 
-    # Get the timestamp stored in the Metadata sheet
+# Check if polling interval met
+interval_met = (current_time - st.session_state.last_poll_time).total_seconds() >= POLLING_INTERVAL_SECONDS
+st.sidebar.write(f"Polling Interval Met?: {interval_met}") # DEBUG
+
+if interval_met:
+    st.sidebar.write("--> Polling...") # DEBUG Indent
+    st.session_state.last_poll_time = current_time # Update poll time
+
     actual_sheet_update_time = get_sheet_last_update_time()
+    st.sidebar.write(f"--> Sheet Update Time (Read): {actual_sheet_update_time}") # DEBUG
 
-    # Compare with the last known update time
-    if actual_sheet_update_time > st.session_state.last_known_sheet_update_time:
-        st.success(f"Change detected in Google Sheet at {actual_sheet_update_time.strftime('%H:%M:%S')}. Reloading data.")
-        # Clear the cache for the *full data fetching function* specifically
-        # Note: st.cache_data doesn't have a simple way to clear *one* function's cache.
-        # Clearing all cache associated with @st.cache_data:
+    # Ensure we have a valid datetime object in session state for comparison
+    last_known = st.session_state.last_known_sheet_update_time
+    if not isinstance(last_known, datetime):
+        st.sidebar.warning(f"--> Last known update time was invalid type ({type(last_known)}), resetting to min.") # DEBUG
+        last_known = datetime.min
+        st.session_state.last_known_sheet_update_time = last_known # Fix state
+
+    st.sidebar.write(f"--> Last Known Update (State): {last_known}") # DEBUG
+
+    # Perform comparison carefully
+    needs_update = False # Default
+    if isinstance(actual_sheet_update_time, datetime): # Check if read was successful
+        try:
+            needs_update = actual_sheet_update_time > last_known
+        except TypeError:
+             st.sidebar.error("--> Error comparing timestamps. Check types.") # DEBUG
+             needs_update = True # Force update on comparison error?
+    else:
+        st.sidebar.error("--> Failed to get valid sheet update time for comparison.") # DEBUG
+
+    st.sidebar.write(f"--> Needs Fetch? (Comparison): {needs_update}") # DEBUG
+
+    if needs_update:
+        st.sidebar.info("--> Change detected or initial load. Fetching full data...") # DEBUG
+        # Clear cache before fetching (important)
         st.cache_data.clear()
+        st.sidebar.write("--> Cache cleared.") # DEBUG
 
-        # Fetch the updated full data
+        # Call the data fetching function (which now has its own debug prints)
         new_df, fetch_time = fetch_full_attendance_data()
 
         # Update session state
-        st.session_state.cached_dataframe = new_df # Store the latest data
+        st.session_state.cached_dataframe = new_df
         st.session_state.last_known_sheet_update_time = actual_sheet_update_time
         st.session_state.full_data_last_fetch_time = fetch_time.strftime('%Y-%m-%d %H:%M:%S')
-        # Reset the point processor timestamp to ensure new points are added
-        st.session_state.latest_processed_timestamp_for_points = None
-        # Rerun immediately to display the new data
-        st.rerun()
-    # else:
-        # Optional: Indicate that no change was detected
-        # st.sidebar.write(f"Checked at {current_time.strftime('%H:%M:%S')}: No change detected.")
+        st.session_state.latest_processed_timestamp_for_points = None # Reset point processor
+
+        st.sidebar.success(f"--> Data fetch complete. Stored DF shape: {st.session_state.cached_dataframe.shape}") # DEBUG
+        st.sidebar.write("--> Triggering immediate rerun.") # DEBUG
+        st.rerun() # Rerun immediately to display the new data
+    else:
+        st.sidebar.write("--> No change detected in sheet timestamp. No fetch triggered.") # DEBUG
+# else: # Optional debug for when interval NOT met
+#    st.sidebar.write("Polling interval not yet met.")
+
+
+
+# --- Assign data for display ---
+# Always assign from session state AFTER the update check block
+filtered_df = st.session_state.cached_dataframe
+st.sidebar.markdown("--- Display ---")
+st.sidebar.write(f"DataFrame for display shape: {filtered_df.shape}") # DEBUG outside condition
+# --- End Check for Updates ---
+
+# (Rest of your dashboard code using filtered_df...)
 
 # Use the DataFrame stored in session state for the dashboard display
 filtered_df = st.session_state.cached_dataframe
