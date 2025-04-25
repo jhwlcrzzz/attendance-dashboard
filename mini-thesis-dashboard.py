@@ -106,7 +106,7 @@ def force_reload():
 filtered_df = load_data()
 
 # Create three columns for layout
-col1, col2, col3 = st.columns([8, 9, 5])
+col1, col2, col3 = st.columns([8, 9, 5], gap='large')
 
 # --- COLUMN 1: Pie Chart and Table ---
 with col1:
