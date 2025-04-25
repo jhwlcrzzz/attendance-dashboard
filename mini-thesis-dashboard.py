@@ -149,10 +149,18 @@ with col1:
         st.pyplot(fig, use_container_width=True) # Let streamlit manage width
 
         # --- CORRECTED METRIC ---
-        # Display the actual calculated count of people inside
-        st.metric("People inside the campus", time_in_count)
-        st.metric("Total Unique Persons Today (Approx)", len(id_counts))
-        # --- END CORRECTION ---
+        # --- Display Metrics Side-by-Side ---
+        metric_col1, metric_col2 = st.columns(2) # Create two equal columns
+        
+        with metric_col1:
+            # Put the first metric in the first column
+            st.metric("People inside the campus", time_in_count)
+
+        with metric_col2:
+            # Put the second metric in the second column
+            total_unique_logged = len(id_counts) # Calculate total unique count
+            st.metric("Total Unique Persons Today (Approx)", total_unique_logged)
+                # --- END CORRECTION ---
 
     else:
         st.info("No attendance data loaded.")
