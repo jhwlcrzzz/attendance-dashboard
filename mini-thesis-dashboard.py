@@ -139,43 +139,104 @@ def get_sheet_last_update_time():
 
 
 # Function to fetch the FULL data - cached for longer
-@st.cache_data(ttl=FULL_DATA_CACHE_TTL)
+@st.cache_data(ttl=FULL_DATA_CACHE_TTL) # Cache definition remains
 def fetch_full_attendance_data():
-    """Fetches and processes the main attendance data from Metadata."""
+    """Fetches and processes the main attendance data from Sheet1 with debugging."""
     fetch_time = datetime.now()
-    st.sidebar.info(f"Fetching full data at {fetch_time.strftime('%H:%M:%S')}...") # Indicate fetch
-    time.sleep(0.5) # Brief pause to make the message visible
+    st.info(f"[FETCH_DATA] Attempting at {fetch_time.strftime('%H:%M:%S')}...") # DEBUG marker
+    processed_df = pd.DataFrame(columns=["Timestamp", "Gate No.", "Identification No.", "Name"]) # Default empty
     try:
         conn_data = st.connection("gsheets", type=GSheetsConnection)
-        df = conn_data.read(worksheet="Metadata") # Assumes main data is on Metadata
+        # --- Ensure worksheet name is correct ---
+        worksheet_to_read = "Sheet1" # <--- DOUBLE-CHECK THIS NAME
+        st.write(f"[FETCH_DATA] Reading worksheet: '{worksheet_to_read}'") # DEBUG
+
+        # Use short TTL for read during debug? Helps if sheet changes rapidly during test.
+        df = conn_data.read(worksheet=worksheet_to_read, ttl=5)
+
+        st.write(f"[FETCH_DATA] Initial read done. Shape: {df.shape}") # DEBUG
+        if not df.empty:
+             st.write("[FETCH_DATA] First 5 rows read:") # DEBUG
+             st.dataframe(df.head()) # DEBUG - Show sample data read
 
         if df.empty:
-             st.warning("Main data sheet (Metadata) appears empty.")
-             return pd.DataFrame(columns=["Timestamp", "Gate No.", "Identification No.", "Name"]), fetch_time
+             st.warning(f"[FETCH_DATA] Read operation returned an empty DataFrame from '{worksheet_to_read}'.")
+             # Return the default empty df and time
+             return processed_df, fetch_time
 
-        required_cols = ["Timestamp", "Gate No.", "Identification No.", "Name"]
-        if not all(col in df.columns for col in required_cols):
-             st.error(f"Missing required columns in Metadata. Need: {required_cols}")
-             return pd.DataFrame(columns=required_cols), fetch_time
+        # --- Column Name Verification ---
+        required_cols = ["Timestamp", "Gate No.", "Identification No.", "Name"] # <--- DOUBLE-CHECK THESE HEADERS
+        st.write(f"[FETCH_DATA] Expected columns: {required_cols}") # DEBUG
+        actual_cols = df.columns.tolist()
+        st.write(f"[FETCH_DATA] Actual columns found: {actual_cols}") # DEBUG
+
+        missing_cols = [col for col in required_cols if col not in actual_cols]
+        if missing_cols:
+             # This is a critical error, data cannot be processed
+             st.error(f"[FETCH_DATA] FATAL: Missing required columns in '{worksheet_to_read}': {missing_cols}. Please check Google Sheet header row.")
+             return processed_df, fetch_time # Return default empty DF
+
+        # Check for extra columns (optional, but good to know)
+        extra_cols = [col for col in actual_cols if col not in required_cols]
+        if extra_cols:
+            st.write(f"[FETCH_DATA] Note: Found extra columns not used by dashboard: {extra_cols}") # DEBUG
+        # --- End Column Verification ---
 
         filtered_df = df[required_cols].copy()
-        # Convert Timestamp, handling potential errors
-        filtered_df["Timestamp"] = pd.to_datetime(filtered_df["Timestamp"], errors='coerce')
-        initial_rows = len(filtered_df)
-        filtered_df.dropna(subset=["Timestamp"], inplace=True)
-        if len(filtered_df) < initial_rows:
-             st.warning(f"Dropped {initial_rows - len(filtered_df)} rows due to invalid Timestamps.")
 
-        # Handle Gate No. conversion
-        filtered_df["Gate No."] = pd.to_numeric(filtered_df["Gate No."], errors='coerce').fillna(0).astype(int)
-        filtered_df["Identification No."] = filtered_df["Identification No."].astype(str)
+        # --- Timestamp Conversion ---
+        st.write("[FETCH_DATA] Converting Timestamps...") # DEBUG
+        initial_rows_ts = len(filtered_df)
+        # Ensure the column exists before conversion
+        if "Timestamp" in filtered_df.columns:
+            filtered_df["Timestamp"] = pd.to_datetime(filtered_df["Timestamp"], errors='coerce')
+            filtered_df.dropna(subset=["Timestamp"], inplace=True)
+            rows_dropped_ts = initial_rows_ts - len(filtered_df)
+            if rows_dropped_ts > 0:
+                 st.warning(f"[FETCH_DATA] Dropped {rows_dropped_ts} rows due to invalid Timestamps.")
+            st.write("[FETCH_DATA] Timestamp conversion done.") # DEBUG
+        else:
+            st.error("[FETCH_DATA] Timestamp column not found for conversion!") # Should have been caught above, but safe check
+        # --- End Timestamp Conversion ---
 
-        # Sort by Timestamp DESCENDING
-        filtered_df = filtered_df.sort_values(by="Timestamp", ascending=False).reset_index(drop=True)
+        # --- Gate No. Conversion ---
+        st.write("[FETCH_DATA] Converting Gate No...") # DEBUG
+        if "Gate No." in filtered_df.columns:
+             # Handle potential non-numeric values before converting to int
+            filtered_df["Gate No."] = pd.to_numeric(filtered_df["Gate No."], errors='coerce').fillna(0).astype(int)
+            st.write("[FETCH_DATA] Gate No. conversion done.") # DEBUG
+        else:
+             st.error("[FETCH_DATA] Gate No. column not found for conversion!")
+        # --- End Gate No. Conversion ---
 
-        st.sidebar.info("Data fetch complete.") # Clear fetch message
+        if "Identification No." in filtered_df.columns:
+            filtered_df["Identification No."] = filtered_df["Identification No."].astype(str)
+        else:
+             st.error("[FETCH_DATA] Identification No. column not found!")
 
-        return filtered_df, fetch_time
+
+        st.write(f"[FETCH_DATA] Data processing complete. Final DataFrame shape: {filtered_df.shape}") # DEBUG
+        if filtered_df.empty and initial_rows_ts > 0:
+             # Only warn if it started with rows and ended empty
+             st.warning("[FETCH_DATA] Processed DataFrame is empty after cleaning/conversion steps, but started with data.")
+
+        # Sort by Timestamp DESCENDING only if Timestamp column exists and DF not empty
+        if "Timestamp" in filtered_df.columns and not filtered_df.empty:
+            processed_df = filtered_df.sort_values(by="Timestamp", ascending=False).reset_index(drop=True)
+        elif not filtered_df.empty:
+             processed_df = filtered_df.reset_index(drop=True) # Keep data if timestamp missing, but don't sort
+        # else processed_df remains the default empty one
+
+        st.success("[FETCH_DATA] Function finished.") # Update status
+
+        return processed_df, fetch_time # Return the processed (or empty) DF
+
+    except Exception as e:
+        st.error(f"[FETCH_DATA] Error during fetch/process for '{worksheet_to_read}': {e}")
+        st.exception(e) # Show full traceback for debugging
+        st.info("[FETCH_DATA] Data fetch/process failed.") # Update status
+        # Return default empty DataFrame and current time on error
+        return processed_df, fetch_time
 
     except Exception as e:
         st.error(f"Error loading or processing attendance data: {e}")
