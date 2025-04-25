@@ -90,7 +90,7 @@ st.markdown("""
 
 
 # Uses a very short cache or no cache to ensure frequent checking.
-@@st.cache_data(ttl=5)
+@st.cache_data(ttl=5)
 def get_sheet_last_update_time():
     st.write("Attempting to read Metadata sheet...") # Add debug print
     try:
