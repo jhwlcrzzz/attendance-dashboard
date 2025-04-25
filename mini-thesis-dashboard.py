@@ -247,7 +247,7 @@ with col3:
                     # Much larger marker size (20 instead of 10)
                     ax.plot(x, y, 'o', color=violet_color, markersize=8, alpha=.9)
                     # Bold text with larger font
-                    ax.text(x+12, y+50, f"Gate{gate_num}", color='#000000', fontsize=10, bbox=dict(facecolor='#ffffff', alpha=0.69))
+                    ax.text(x+12, y+55, f"Gate{gate_num}", color='#000000', fontsize=10, bbox=dict(facecolor='#ffffff', alpha=0.69))
                 
                 ax.axis('off')  # Hide axes
                 
