@@ -149,19 +149,51 @@ with col1:
         st.pyplot(fig, use_container_width=True) # Let streamlit manage width
 
         # --- CORRECTED METRIC ---
-        # --- Display Metrics Side-by-Side ---
-        metric_col1, metric_col2 = st.columns(2) # Create two equal columns
+       # --- Custom CSS Injection ---
+        st.markdown("""
+        <style>
+        /* Target the main container of each metric */
+        div[data-testid="stMetric"] {
+            background-color: #FFFFFF;
+            border: 1px solid #CCCCCC;
+            padding: 10px 15px; /* Adjusted padding (top/bottom, left/right) */
+            border-radius: 5px;
+            color: #000000; /* Default text color inside */
+        }
         
-        with metric_col1:
-            # Put the first metric in the first column
-            st.metric("People inside the campus", time_in_count)
-
-        with metric_col2:
-            # Put the second metric in the second column
-            total_unique_logged = len(id_counts) # Calculate total unique count
-            st.metric("Total Unique Persons Today (Approx)", total_unique_logged)
-                # --- END CORRECTION ---
-
+        /* Target the label text specifically */
+        div[data-testid="stMetricLabel"] {
+            color: #333333 !important; /* Dark grey label */
+            font-size: 0.95em; /* Slightly smaller label */
+        }
+        
+        /* Target the value text specifically */
+        div[data-testid="stMetricValue"] {
+            color: #000000 !important; /* Black value */
+        }
+        
+        /* Make sure text elements inherit the black color if not specified */
+        div[data-testid="stMetric"] p {
+            color: #000000 !important;
+        }
+        
+        /* You might need to adjust selectors slightly based on Streamlit version */
+        /* Inspect element in browser if styles don't apply correctly */
+        
+        </style>
+        """, unsafe_allow_html=True)
+        # --- End Custom CSS ---
+        
+        # ... (Rest of your script, including where st.metric is called) ...
+        
+        # Example of where your metrics might be called (inside col1)
+        # with col1:
+        #    metric_col1, metric_col2 = st.columns(2)
+        #    with metric_col1:
+        #        st.metric("People inside the campus", time_in_count)
+        #    with metric_col2:
+        #        st.metric("Total Unique Persons Today (Approx)", total_unique_logged)
+        #    st.divider()
     else:
         st.info("No attendance data loaded.")
         # Display 0 when no data is loaded
