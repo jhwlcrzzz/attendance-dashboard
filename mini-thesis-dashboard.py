@@ -156,7 +156,7 @@ with col1:
         div[data-testid="stMetric"] {
             background-color: #FFFFFF;
             border: 1px solid #CCCCCC;
-            padding: 10px 15px; /* Adjusted padding (top/bottom, left/right) */
+            padding: 10px 15px; /* Adjusted padding */
             border-radius: 5px;
             color: #000000; /* Default text color inside */
         }
@@ -170,15 +170,22 @@ with col1:
         /* Target the value text specifically */
         div[data-testid="stMetricValue"] {
             color: #000000 !important; /* Black value */
+            font-size: 1.8em !important; /* <<< Added this line - Adjust size (e.g., 2em, 24px) as needed */
         }
         
         /* Make sure text elements inherit the black color if not specified */
+        /* This might not be strictly necessary if the above works, but can help */
         div[data-testid="stMetric"] p {
             color: #000000 !important;
         }
         
-        /* You might need to adjust selectors slightly based on Streamlit version */
-        /* Inspect element in browser if styles don't apply correctly */
+        /* Target the value text's inner container if direct targeting isn't enough */
+        /* Usually the above selector is sufficient, but uncomment/use this if needed: */
+        /*
+        div[data-testid="stMetricValue"] > div,
+        div[data-testid="stMetricValue"] > p {
+            font-size: 1.8em !important; /* Ensure inner element gets size */
+        /* } */
         
         </style>
         """, unsafe_allow_html=True)
