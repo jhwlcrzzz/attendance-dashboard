@@ -191,7 +191,7 @@ with col1:
         with metric_col1:
             st.metric("People inside the campus", time_in_count)
         with metric_col2:
-            st.metric("Total Unique Persons Today (Approx)", total_unique_logged)
+            st.metric("Total Unique Persons Today (Approx)", len(id_counts))
 
     else:
         st.info("No attendance data loaded.")
