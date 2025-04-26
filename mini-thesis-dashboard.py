@@ -170,7 +170,7 @@ with col1:
         /* Target the value text specifically */
         div[data-testid="stMetricValue"] {
             color: #000000 !important; /* Black value */
-            font-size: 1.8em !important; /* <<< Added this line - Adjust size (e.g., 2em, 24px) as needed */
+            font-size: 4.5em !important; /* <<< Added this line - Adjust size (e.g., 2em, 24px) as needed */
         }
         
         /* Make sure text elements inherit the black color if not specified */
@@ -184,7 +184,7 @@ with col1:
         /*
         div[data-testid="stMetricValue"] > div,
         div[data-testid="stMetricValue"] > p {
-            font-size: 1.8em !important; /* Ensure inner element gets size */
+            font-size: 4.5em !important; /* Ensure inner element gets size */
         /* } */
         
         </style>
