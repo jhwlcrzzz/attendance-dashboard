@@ -186,14 +186,13 @@ with col1:
         
         # ... (Rest of your script, including where st.metric is called) ...
         
-        # Example of where your metrics might be called (inside col1)
-        # with col1:
-        #    metric_col1, metric_col2 = st.columns(2)
-        #    with metric_col1:
-        #        st.metric("People inside the campus", time_in_count)
-        #    with metric_col2:
-        #        st.metric("Total Unique Persons Today (Approx)", total_unique_logged)
-        #    st.divider()
+        #Example of where your metrics might be called (inside col1)
+        metric_col1, metric_col2 = st.columns(2)
+        with metric_col1:
+            st.metric("People inside the campus", time_in_count)
+        with metric_col2:
+            st.metric("Total Unique Persons Today (Approx)", total_unique_logged)
+
     else:
         st.info("No attendance data loaded.")
         # Display 0 when no data is loaded
