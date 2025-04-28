@@ -92,48 +92,81 @@ st.sidebar.write(f"Dashboard Auto-Refreshing (Count: {refresh_count})")
 
 # Modified cache data function with shorter TTL and error handling
 # --- Data Loading Function (Optimized) ---
-@st.cache_data(ttl=DATA_CACHE_TTL_SECONDS) # Use the defined TTL
+@st.cache_data(ttl=DATA_CACHE_TTL_SECONDS) # Make sure DATA_CACHE_TTL_SECONDS is defined (e.g., 10)
 def load_data():
-    st.sidebar.info(f"CACHE MISS: Fetching data from Sheet... (TTL: {DATA_CACHE_TTL_SECONDS}s)") # Log cache miss
+    # This log appears ONLY when the function *actually* executes (cache miss)
+    st.sidebar.warning(f"!!! RUNNING load_data() - CACHE MISS at {datetime.now().strftime('%H:%M:%S')} !!!")
+    processed_df = pd.DataFrame(columns=["Timestamp", "Gate No.", "Identification No.", "Name"])
     try:
         conn = st.connection("gsheets", type=GSheetsConnection)
-        # conn.reset() # Remove this - generally not needed and adds overhead
-        df = conn.read(worksheet="Sheet1") # Ensure sheet name is correct
+        # conn.reset() # REMOVED - Avoid this
+
+        worksheet_to_read = "Sheet1" # Ensure correct name
+        st.sidebar.info(f"[load_data] Reading '{worksheet_to_read}' via conn.read(ttl=5)...")
+
+        # Explicitly set short TTL for the gsheets connection read itself
+        df = conn.read(worksheet=worksheet_to_read, ttl=5)
+
+        st.sidebar.info(f"[load_data] Raw data read shape: {df.shape}") # Log raw shape
+        # Optional: Show head of raw data read - uncomment carefully if needed
+        # if not df.empty: st.sidebar.dataframe(df.head(2))
 
         if df.empty:
-            st.sidebar.warning("Sheet1 read returned empty.")
-            return pd.DataFrame(columns=["Timestamp", "Gate No.", "Identification No.", "Name"])
+            st.sidebar.warning(f"[load_data] Read returned empty DataFrame from '{worksheet_to_read}'.")
+            return processed_df # Return default empty
 
         # --- Column Handling & Type Conversion ---
-        required_cols = ["Timestamp", "Gate No.", "Identification No.", "Name"] # Ensure match sheet headers
+        required_cols = ["Timestamp", "Gate No.", "Identification No.", "Name"] # Ensure exact match
+        st.sidebar.info(f"[load_data] Expected cols: {required_cols}")
         actual_cols = df.columns.tolist()
+        st.sidebar.info(f"[load_data] Actual cols: {actual_cols}")
+
         missing_cols = [col for col in required_cols if col not in actual_cols]
         if missing_cols:
-             st.sidebar.error(f"FATAL: Missing required columns: {missing_cols}.")
-             return pd.DataFrame(columns=required_cols)
+             st.sidebar.error(f"[load_data] FATAL: Missing required columns: {missing_cols}.")
+             return processed_df
 
         filtered_df = df[required_cols].copy()
-
         initial_rows = len(filtered_df)
-        filtered_df["Timestamp"] = pd.to_datetime(filtered_df["Timestamp"], errors='coerce')
-        filtered_df.dropna(subset=["Timestamp"], inplace=True)
-        # Log if rows dropped
-        if len(filtered_df) < initial_rows:
-             st.sidebar.warning(f"Dropped {initial_rows - len(filtered_df)} rows due to invalid Timestamps.")
 
-        filtered_df["Gate No."] = pd.to_numeric(filtered_df["Gate No."], errors='coerce').fillna(0).astype(int)
-        filtered_df["Identification No."] = filtered_df["Identification No."].astype(str)
+        # Convert Timestamp
+        if "Timestamp" in filtered_df.columns:
+            filtered_df["Timestamp"] = pd.to_datetime(filtered_df["Timestamp"], errors='coerce')
+            filtered_df.dropna(subset=["Timestamp"], inplace=True)
+            if len(filtered_df) < initial_rows:
+                 st.sidebar.warning(f"[load_data] Dropped {initial_rows - len(filtered_df)} rows: Invalid Timestamps.")
+        else: st.sidebar.error("[load_data] Timestamp column check failed.") # Should be caught above
+
+        # Convert Gate No.
+        if "Gate No." in filtered_df.columns:
+            filtered_df["Gate No."] = pd.to_numeric(filtered_df["Gate No."], errors='coerce').fillna(0).astype(int)
+        else: st.sidebar.error("[load_data] Gate No. column check failed.")
+
+        # Convert ID No.
+        if "Identification No." in filtered_df.columns:
+            filtered_df["Identification No."] = filtered_df["Identification No."].astype(str)
+        else: st.sidebar.error("[load_data] Identification No. column check failed.")
         # --- End Processing ---
 
-        if not filtered_df.empty:
-            filtered_df = filtered_df.sort_values(by="Timestamp", ascending=False).reset_index(drop=True)
+        if filtered_df.empty and initial_rows > 0:
+             st.sidebar.warning("[load_data] Processed DataFrame empty after cleaning.")
 
-        st.sidebar.success(f"Data fetch/process OK. Shape: {filtered_df.shape}")
-        return filtered_df
+        if "Timestamp" in filtered_df.columns and not filtered_df.empty:
+            processed_df = filtered_df.sort_values(by="Timestamp", ascending=False).reset_index(drop=True)
+        elif not filtered_df.empty:
+             processed_df = filtered_df.reset_index(drop=True)
+
+        st.sidebar.success(f"[load_data] OK. Processed shape: {processed_df.shape}")
+        return processed_df
 
     except Exception as e:
-        st.sidebar.error(f"Error in load_data: {e}")
-        return pd.DataFrame(columns=["Timestamp", "Gate No.", "Identification No.", "Name"])
+        st.sidebar.error(f"!!! ERROR in load_data: {e}") # Log specific error
+        import traceback
+        # Print full error traceback to sidebar for debugging
+        st.sidebar.text(traceback.format_exc())
+        return processed_df # Return default empty on error
+
+
 
 # --- Manual Refresh Function ---
 def force_reload():
