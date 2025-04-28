@@ -13,7 +13,7 @@ from streamlit_autorefresh import st_autorefresh # Keep if using this method
 
 # --- Configuration ---
 DATA_CACHE_TTL_SECONDS = 5 # Fetch data max every 15 seconds (Adjust as needed)
-APP_REFRESH_INTERVAL_SECONDS = 4 # Rerun UI every 5 seconds (Requires st_autorefresh or similar)
+APP_REFRESH_INTERVAL_SECONDS = 6 # Rerun UI every 5 seconds (Requires st_autorefresh or similar)
 
 logo_path = os.path.join("sd", f"logo.jpg")
 st.logo(logo_path, size="large")
