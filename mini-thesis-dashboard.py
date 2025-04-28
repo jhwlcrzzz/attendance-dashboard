@@ -357,7 +357,7 @@ st.sidebar.write(f"Last updated: {datetime.now().strftime('%H:%M:%S')}")
 
 # Check if it's time to update based on interval
 current_time = datetime.now()
-if (current_time - st.session_state.last_update_check).total_seconds() >= 2:  # Check every 3 seconds
+if (current_time - st.session_state.last_update_check).total_seconds() >= 4:  # Check every 3 seconds
     st.session_state.last_update_check = current_time
     # Clear cache to force reload
     st.cache_data.clear()
