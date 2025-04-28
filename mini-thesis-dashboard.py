@@ -84,8 +84,8 @@ st.title("LORA RFID-BASED UNIVERSITY ATTENDANCE SYSTEM — Dashboard")
 #st.divider()
 
 
-# --- Auto-Refresh (Use st_autorefresh if possible for Cloud) ---
-# If using st_autorefresh:
+# --- Auto-Refresh (Use st autorefresh if possible for Cloud) ---
+# If using st autorefresh:
 refresh_count = st_autorefresh(interval=APP_REFRESH_INTERVAL_SECONDS * 1000, limit=None, key="dashboard_refresh")
 st.sidebar.write(f"Dashboard Auto-Refreshing (Count: {refresh_count})")
 
