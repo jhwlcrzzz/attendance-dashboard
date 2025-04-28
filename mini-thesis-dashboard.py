@@ -8,6 +8,8 @@ from PIL import Image
 import io   
 import numpy as np
 from datetime import datetime, timedelta
+from streamlit_autorefresh import st_autorefresh # Keep if using this method
+
 
 # --- Configuration ---
 DATA_CACHE_TTL_SECONDS = 15 # Fetch data max every 15 seconds (Adjust as needed)
