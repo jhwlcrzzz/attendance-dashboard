@@ -9,6 +9,10 @@ import io
 import numpy as np
 from datetime import datetime, timedelta
 
+# --- Configuration ---
+DATA_CACHE_TTL_SECONDS = 15 # Fetch data max every 15 seconds (Adjust as needed)
+APP_REFRESH_INTERVAL_SECONDS = 5 # Rerun UI every 5 seconds (Requires st_autorefresh or similar)
+
 logo_path = os.path.join("sd", f"logo.jpg")
 st.logo(logo_path, size="large")
 
@@ -17,8 +21,16 @@ if 'last_refresh' not in st.session_state:
     st.session_state.last_refresh = datetime.now()
 if 'gate_points' not in st.session_state:
     st.session_state.gate_points = []
-if 'last_update_check' not in st.session_state:
-    st.session_state.last_update_check = datetime.now() - timedelta(seconds=10)
+
+
+
+# ... (Initialize session state - remove last_update_check if using st_autorefresh) ...
+# Keep inside_ids if you implemented that logic
+if 'inside_ids' not in st.session_state:
+    st.session_state.inside_ids = {}
+
+
+
 
 # Page configuration
 st.set_page_config(page_title="Attendace Dashboard", page_icon=":signal_strength:", layout="wide")
@@ -69,39 +81,67 @@ st.markdown("""
 st.title("LORA RFID-BASED UNIVERSITY ATTENDANCE SYSTEM — Dashboard")
 #st.divider()
 
+
+# --- Auto-Refresh (Use st_autorefresh if possible for Cloud) ---
+# If using st_autorefresh:
+refresh_count = st_autorefresh(interval=APP_REFRESH_INTERVAL_SECONDS * 1000, limit=None, key="dashboard_refresh")
+st.sidebar.write(f"Dashboard Auto-Refreshing (Count: {refresh_count})")
+
+
 # Modified cache data function with shorter TTL and error handling
-@st.cache_data(ttl=3)
+# --- Data Loading Function (Optimized) ---
+@st.cache_data(ttl=DATA_CACHE_TTL_SECONDS) # Use the defined TTL
 def load_data():
+    st.sidebar.info(f"CACHE MISS: Fetching data from Sheet... (TTL: {DATA_CACHE_TTL_SECONDS}s)") # Log cache miss
     try:
-        # Connect to Google Sheets
         conn = st.connection("gsheets", type=GSheetsConnection)
-        
-        # Force a refresh of the connection
-        conn.reset()
-        
-        # Read data from Google Sheets
-        df = conn.read(worksheet="Sheet1")
-        
-        # Filter required columns (Timestamp, Gate Number, Identification Number)
-        filtered_df = df[["Timestamp", "Gate No.", "Identification No.", "Name"]].copy()
-        
-        # Convert Timestamp to datetime format
-        filtered_df["Timestamp"] = pd.to_datetime(filtered_df["Timestamp"])
-        
-        # Handle NaN values in Gate No. and convert to integer
-        filtered_df["Gate No."] = filtered_df["Gate No."].fillna(0).astype(int)
-        
-        filtered_df = filtered_df.sort_values(by="Timestamp", ascending=False)
-        
+        # conn.reset() # Remove this - generally not needed and adds overhead
+        df = conn.read(worksheet="Sheet1") # Ensure sheet name is correct
+
+        if df.empty:
+            st.sidebar.warning("Sheet1 read returned empty.")
+            return pd.DataFrame(columns=["Timestamp", "Gate No.", "Identification No.", "Name"])
+
+        # --- Column Handling & Type Conversion ---
+        required_cols = ["Timestamp", "Gate No.", "Identification No.", "Name"] # Ensure match sheet headers
+        actual_cols = df.columns.tolist()
+        missing_cols = [col for col in required_cols if col not in actual_cols]
+        if missing_cols:
+             st.sidebar.error(f"FATAL: Missing required columns: {missing_cols}.")
+             return pd.DataFrame(columns=required_cols)
+
+        filtered_df = df[required_cols].copy()
+
+        initial_rows = len(filtered_df)
+        filtered_df["Timestamp"] = pd.to_datetime(filtered_df["Timestamp"], errors='coerce')
+        filtered_df.dropna(subset=["Timestamp"], inplace=True)
+        # Log if rows dropped
+        if len(filtered_df) < initial_rows:
+             st.sidebar.warning(f"Dropped {initial_rows - len(filtered_df)} rows due to invalid Timestamps.")
+
+        filtered_df["Gate No."] = pd.to_numeric(filtered_df["Gate No."], errors='coerce').fillna(0).astype(int)
+        filtered_df["Identification No."] = filtered_df["Identification No."].astype(str)
+        # --- End Processing ---
+
+        if not filtered_df.empty:
+            filtered_df = filtered_df.sort_values(by="Timestamp", ascending=False).reset_index(drop=True)
+
+        st.sidebar.success(f"Data fetch/process OK. Shape: {filtered_df.shape}")
         return filtered_df
+
     except Exception as e:
-        st.error(f"Error loading data: {str(e)}")
-        # Return empty DataFrame if there's an error
+        st.sidebar.error(f"Error in load_data: {e}")
         return pd.DataFrame(columns=["Timestamp", "Gate No.", "Identification No.", "Name"])
 
-# Create a function to clear the cache and force reload
+# --- Manual Refresh Function ---
 def force_reload():
-    st.cache_data.clear()
+    # Clear specific caches if possible, otherwise clear all
+    st.cache_data.clear() # Clears all @st.cache_data
+    # Clear session state related to counts if needed
+    if 'inside_ids' in st.session_state:
+        del st.session_state['inside_ids'] # Reset count state on manual refresh
+    st.rerun()
+
 
 filtered_df = load_data()
 
@@ -351,15 +391,10 @@ with col3:
         st.error(f"Error displaying map: {str(e)}")
         st.write("Corrupted Data")
 
-# Add a refresh button and display the last refresh time
-st.sidebar.button("Refresh Data", on_click=force_reload)
-st.sidebar.write(f"Last updated: {datetime.now().strftime('%H:%M:%S')}")
+# --- Sidebar ---
+st.sidebar.button("Refresh Data Now", on_click=force_reload)
+st.sidebar.write(f"UI Refresh Interval: {APP_REFRESH_INTERVAL_SECONDS}s (approx)") # Inform user
+st.sidebar.write(f"Data Cache TTL: {DATA_CACHE_TTL_SECONDS}s") # Inform user
 
-# Check if it's time to update based on interval
-current_time = datetime.now()
-if (current_time - st.session_state.last_update_check).total_seconds() >= 4:  # Check every 3 seconds
-    st.session_state.last_update_check = current_time
-    # Clear cache to force reload
-    st.cache_data.clear()
-    # Use rerun to refresh the app
-    st.rerun()
+
+
