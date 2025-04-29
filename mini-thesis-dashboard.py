@@ -172,10 +172,12 @@ def load_data():
 def force_reload():
     # Clear specific caches if possible, otherwise clear all
     st.cache_data.clear() # Clears all @st.cache_data
+    st.sidebar.info("Cache cleared.") # Optional: Feedback
+
     # Clear session state related to counts if needed
     if 'inside_ids' in st.session_state:
+        st.sidebar.info("Resetting 'inside' status.") # Optional: Feedback
         del st.session_state['inside_ids'] # Reset count state on manual refresh
-    st.rerun()
 
 
 filtered_df = load_data()
