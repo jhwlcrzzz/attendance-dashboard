@@ -145,24 +145,28 @@ def load_data():
         
         # --- CORRECT Identification No. Handling ---
         if "Identification No." in filtered_df.columns:
-            # 1. Make sure it's treated as a string
-            # REMOVE any pd.to_numeric, .fillna(0), .astype(int/int64) lines for this column
-            filtered_df["Identification No."] = filtered_df["Identification No."].astype(str)
-        
-            # 2. Optional: Remove leading/trailing whitespace
-            filtered_df["Identification No."] = filtered_df["Identification No."].str.strip()
-        
-            # 3. Optional: Log if any are now empty (helps find blank entries in sheet)
-            #if (filtered_df["Identification No."] == "").any():
-                 #st.sidebar.warning("[load_data] Found empty strings in Identification No. after processing.")
-            #st.sidebar.info("[load_data] Identification No. processed AS STRING.") # Confirmation log
-        #else:
-            #st.sidebar.error("[load_data] Identification No. column is missing!")
-        # --- End CORRECT Identification No. Handling ---
+            # 1. Convert to string FIRST to handle mixed types directly
+            id_series_str = filtered_df["Identification No."].astype(str)
 
+            # 2. Optional: Remove leading/trailing whitespace
+            id_series_stripped = id_series_str.str.strip()
+
+            # 3. *** ADDED STEP: Remove trailing ".0" if it exists ***
+            # This handles cases where purely numeric IDs were read as floats
+            # and converted to strings like "##########.0".
+            # The regex '\.0$' matches a literal dot '.', then a '0', only at the end ('$') of the string.
+            id_series_cleaned = id_series_stripped.str.replace(r'\.0$', '', regex=True)
+
+            # 4. Assign the cleaned series back
+            filtered_df["Identification No."] = id_series_cleaned
+
+            # 5. Optional: Log if any are now empty
+            if (filtered_df["Identification No."] == "").any():
+                 st.sidebar.warning("[load_data] Found empty strings in Identification No. after processing.")
+            # st.sidebar.info("[load_data] Identification No. processed AS STRING and cleaned.") # Confirmation log
         else:
-             st.sidebar.error("[load_data] Identification No. column is missing!") # Log if missing
-        # --- End Processing ---
+             st.sidebar.error("[load_data] Identification No. column is missing!")
+        # --- End CORRECT Identification No. Handling ---
 
         #if filtered_df.empty and initial_rows > 0:
              #st.sidebar.warning("[load_data] Processed DataFrame empty after cleaning.")
