@@ -140,12 +140,32 @@ def load_data():
         # Convert Gate No.
         if "Gate No." in filtered_df.columns:
             filtered_df["Gate No."] = pd.to_numeric(filtered_df["Gate No."], errors='coerce').fillna(0).astype(int)
-        #else: st.sidebar.error("[load_data] Gate No. column check failed.")
+        else:
+            #st.sidebar.error("[load_data] Gate No. column is missing!") # Log if missing
 
-        # Convert ID No.
+        # Convert ID No. - Robustly handle potential floats/errors
         if "Identification No." in filtered_df.columns:
-            filtered_df["Identification No."] = filtered_df["Identification No."].astype(str)
-       # else: st.sidebar.error("[load_data] Identification No. column check failed.")
+            # Step 1: Try converting to numeric, coercing errors to NaN
+            numeric_ids = pd.to_numeric(filtered_df["Identification No."], errors='coerce')
+            # Step 2: Fill any resulting NaNs (e.g., if there were non-numeric IDs)
+            # You might want a different placeholder if 0 is a valid ID
+            numeric_ids_filled = numeric_ids.fillna(0)
+            # Step 3: Convert to a safe integer type (like 64-bit to handle large IDs)
+            # This step effectively removes the .0
+            try:
+                 integer_ids = numeric_ids_filled.astype(np.int64)
+                 # Step 4: Convert the clean integer IDs to string for consistency
+                 filtered_df["Identification No."] = integer_ids.astype(str)
+                 #st.sidebar.info("[load_data] Identification No. processed successfully.") # Log success
+            except ValueError as int_error:
+                 #st.sidebar.error(f"[load_data] Error converting Identification No. to integer: {int_error}. Check source data for non-numeric values.")
+                 # Fallback: convert original column to string directly if int conversion fails
+                 filtered_df["Identification No."] = filtered_df["Identification No."].astype(str).str.replace(r'\.0$', '', regex=True)
+
+
+        else:
+             st.sidebar.error("[load_data] Identification No. column is missing!") # Log if missing
+        # --- End Processing ---
         # --- End Processing ---
 
         #if filtered_df.empty and initial_rows > 0:
