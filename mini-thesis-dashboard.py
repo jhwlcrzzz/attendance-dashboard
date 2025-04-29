@@ -117,13 +117,13 @@ def load_data():
 
         # --- Column Handling & Type Conversion ---
         required_cols = ["Timestamp", "Gate No.", "Identification No.", "Name"] # Ensure exact match
-        st.sidebar.info(f"[load_data] Expected cols: {required_cols}")
+        #st.sidebar.info(f"[load_data] Expected cols: {required_cols}")
         actual_cols = df.columns.tolist()
-        st.sidebar.info(f"[load_data] Actual cols: {actual_cols}")
+        #st.sidebar.info(f"[load_data] Actual cols: {actual_cols}")
 
         missing_cols = [col for col in required_cols if col not in actual_cols]
         if missing_cols:
-             st.sidebar.error(f"[load_data] FATAL: Missing required columns: {missing_cols}.")
+             #st.sidebar.error(f"[load_data] FATAL: Missing required columns: {missing_cols}.")
              return processed_df
 
         filtered_df = df[required_cols].copy()
@@ -133,34 +133,34 @@ def load_data():
         if "Timestamp" in filtered_df.columns:
             filtered_df["Timestamp"] = pd.to_datetime(filtered_df["Timestamp"], errors='coerce')
             filtered_df.dropna(subset=["Timestamp"], inplace=True)
-            if len(filtered_df) < initial_rows:
-                 st.sidebar.warning(f"[load_data] Dropped {initial_rows - len(filtered_df)} rows: Invalid Timestamps.")
-        else: st.sidebar.error("[load_data] Timestamp column check failed.") # Should be caught above
+            #if len(filtered_df) < initial_rows:
+                 #st.sidebar.warning(f"[load_data] Dropped {initial_rows - len(filtered_df)} rows: Invalid Timestamps.")
+        #else: st.sidebar.error("[load_data] Timestamp column check failed.") # Should be caught above
 
         # Convert Gate No.
         if "Gate No." in filtered_df.columns:
             filtered_df["Gate No."] = pd.to_numeric(filtered_df["Gate No."], errors='coerce').fillna(0).astype(int)
-        else: st.sidebar.error("[load_data] Gate No. column check failed.")
+        #else: st.sidebar.error("[load_data] Gate No. column check failed.")
 
         # Convert ID No.
         if "Identification No." in filtered_df.columns:
             filtered_df["Identification No."] = filtered_df["Identification No."].astype(str)
-        else: st.sidebar.error("[load_data] Identification No. column check failed.")
+       # else: st.sidebar.error("[load_data] Identification No. column check failed.")
         # --- End Processing ---
 
-        if filtered_df.empty and initial_rows > 0:
-             st.sidebar.warning("[load_data] Processed DataFrame empty after cleaning.")
+        #if filtered_df.empty and initial_rows > 0:
+             #st.sidebar.warning("[load_data] Processed DataFrame empty after cleaning.")
 
         if "Timestamp" in filtered_df.columns and not filtered_df.empty:
             processed_df = filtered_df.sort_values(by="Timestamp", ascending=False).reset_index(drop=True)
         elif not filtered_df.empty:
              processed_df = filtered_df.reset_index(drop=True)
 
-        st.sidebar.success(f"[load_data] OK. Processed shape: {processed_df.shape}")
+        #st.sidebar.success(f"[load_data] OK. Processed shape: {processed_df.shape}")
         return processed_df
 
     except Exception as e:
-        st.sidebar.error(f"!!! ERROR in load_data: {e}") # Log specific error
+        #st.sidebar.error(f"!!! ERROR in load_data: {e}") # Log specific error
         import traceback
         # Print full error traceback to sidebar for debugging
         st.sidebar.text(traceback.format_exc())
@@ -428,8 +428,8 @@ with col3:
 
 # --- Sidebar ---
 st.sidebar.button("Refresh Data Now", on_click=force_reload)
-st.sidebar.write(f"UI Refresh Interval: {APP_REFRESH_INTERVAL_SECONDS}s (approx)") # Inform user
-st.sidebar.write(f"Data Cache TTL: {DATA_CACHE_TTL_SECONDS}s") # Inform user
+#st.sidebar.write(f"UI Refresh Interval: {APP_REFRESH_INTERVAL_SECONDS}s (approx)") # Inform user
+#st.sidebar.write(f"Data Cache TTL: {DATA_CACHE_TTL_SECONDS}s") # Inform user
 
 
 
