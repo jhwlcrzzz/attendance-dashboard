@@ -87,7 +87,7 @@ st.title("LORA RFID-BASED UNIVERSITY ATTENDANCE SYSTEM — Dashboard")
 # --- Auto-Refresh (Use st autorefresh if possible for Cloud) ---
 # If using st autorefresh:
 refresh_count = st_autorefresh(interval=APP_REFRESH_INTERVAL_SECONDS * 1000, limit=None, key="dashboard_refresh")
-st.sidebar.write(f"Dashboard Auto-Refreshing (Count: {refresh_count})")
+#st.sidebar.write(f"Dashboard Auto-Refreshing (Count: {refresh_count})")
 
 
 # Modified cache data function with shorter TTL and error handling
@@ -343,12 +343,12 @@ with col3:
         # Dictionary to map gate numbers to coordinates (x, y)
         # Adjust these coordinates based on your image
         gate_coordinates = {
-            2: (360, 100),
-            3: (400, 260),
-            4: (100, 230),
-            5: (570, 1060),
-            6: (560, 1120),
-            7: (155, 1050),
+            #2: (360, 100),
+            #3: (400, 260),
+            #4: (100, 230),
+            #5: (570, 1060),
+            #6: (560, 1120),
+            #7: (155, 1050),
             8: (150, 975)
         }
         
@@ -399,10 +399,10 @@ with col3:
                 
                 # Add fake points for testing - REMOVE IN PRODUCTION
                 # This will help you see if the points are being displayed correctly
-#                for gate_num, coords in gate_coordinates.items():
-#                    x, y = coords
-#                    ax.plot(x, y, 'o', color=violet_color, markersize=8, alpha=.9)
-#                    ax.text(x+12, y+50, f"Gate{gate_num}", color='#000000', fontsize=8, bbox=dict(facecolor='#ffffff', alpha=0.69))
+                for gate_num, coords in gate_coordinates.items():
+                    x, y = coords
+                    ax.plot(x, y, 'o', color=violet_color, markersize=8, alpha=.9)
+                    ax.text(x+12, y+50, f"Gate{gate_num}", color='#000000', fontsize=8, bbox=dict(facecolor='#ffffff', alpha=0.69))
 
                 
                 # Use a custom CSS hack to control the height
