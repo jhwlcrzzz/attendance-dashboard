@@ -129,43 +129,39 @@ def load_data():
         filtered_df = df[required_cols].copy()
         initial_rows = len(filtered_df)
 
-        # Convert Timestamp
+        # Convert Timestamp (Keep this as is)
         if "Timestamp" in filtered_df.columns:
             filtered_df["Timestamp"] = pd.to_datetime(filtered_df["Timestamp"], errors='coerce')
             filtered_df.dropna(subset=["Timestamp"], inplace=True)
-            #if len(filtered_df) < initial_rows:
-                 #st.sidebar.warning(f"[load_data] Dropped {initial_rows - len(filtered_df)} rows: Invalid Timestamps.")
-        #else: st.sidebar.error("[load_data] Timestamp column check failed.") # Should be caught above
-
-        # Convert Gate No.
+            # ... (optional logging) ...
+        else:
+            st.sidebar.error("[load_data] Timestamp column missing!")
+        
+        # Convert Gate No. (Keep this as is)
         if "Gate No." in filtered_df.columns:
             filtered_df["Gate No."] = pd.to_numeric(filtered_df["Gate No."], errors='coerce').fillna(0).astype(int)
-        #else:
-            #st.sidebar.error("[load_data] Gate No. column is missing!") # Log if missing
-
-        # Convert ID No. - Robustly handle potential floats/errors
+        else:
+            st.sidebar.error("[load_data] Gate No. column missing!")
+        
+        # --- CORRECT Identification No. Handling ---
         if "Identification No." in filtered_df.columns:
-            # Step 1: Try converting to numeric, coercing errors to NaN
-            numeric_ids = pd.to_numeric(filtered_df["Identification No."], errors='coerce')
-            # Step 2: Fill any resulting NaNs (e.g., if there were non-numeric IDs)
-            # You might want a different placeholder if 0 is a valid ID
-            numeric_ids_filled = numeric_ids.fillna(0)
-            # Step 3: Convert to a safe integer type (like 64-bit to handle large IDs)
-            # This step effectively removes the .0
-            try:
-                 integer_ids = numeric_ids_filled.astype(np.int64)
-                 # Step 4: Convert the clean integer IDs to string for consistency
-                 filtered_df["Identification No."] = integer_ids.astype(str)
-                 #st.sidebar.info("[load_data] Identification No. processed successfully.") # Log success
-            except ValueError as int_error:
-                 #st.sidebar.error(f"[load_data] Error converting Identification No. to integer: {int_error}. Check source data for non-numeric values.")
-                 # Fallback: convert original column to string directly if int conversion fails
-                 filtered_df["Identification No."] = filtered_df["Identification No."].astype(str).str.replace(r'\.0$', '', regex=True)
-
+            # 1. Make sure it's treated as a string
+            # REMOVE any pd.to_numeric, .fillna(0), .astype(int/int64) lines for this column
+            filtered_df["Identification No."] = filtered_df["Identification No."].astype(str)
+        
+            # 2. Optional: Remove leading/trailing whitespace
+            filtered_df["Identification No."] = filtered_df["Identification No."].str.strip()
+        
+            # 3. Optional: Log if any are now empty (helps find blank entries in sheet)
+            #if (filtered_df["Identification No."] == "").any():
+                 #st.sidebar.warning("[load_data] Found empty strings in Identification No. after processing.")
+            #st.sidebar.info("[load_data] Identification No. processed AS STRING.") # Confirmation log
+        #else:
+            #st.sidebar.error("[load_data] Identification No. column is missing!")
+        # --- End CORRECT Identification No. Handling ---
 
         else:
              st.sidebar.error("[load_data] Identification No. column is missing!") # Log if missing
-        # --- End Processing ---
         # --- End Processing ---
 
         #if filtered_df.empty and initial_rows > 0:
