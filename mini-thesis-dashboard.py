@@ -112,7 +112,7 @@ def load_data():
         # if not df.empty: st.sidebar.dataframe(df.head(2))
 
         if df.empty:
-            #st.sidebar.warning(f"[load_data] Read returned empty DataFrame from '{worksheet_to_read}'.")
+            st.sidebar.warning(f"[load_data] Read returned empty DataFrame from '{worksheet_to_read}'.")
             return processed_df # Return default empty
 
         # --- Column Handling & Type Conversion ---
