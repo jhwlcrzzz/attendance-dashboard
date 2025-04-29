@@ -95,19 +95,19 @@ st.sidebar.write(f"Dashboard Auto-Refreshing (Count: {refresh_count})")
 @st.cache_data(ttl=DATA_CACHE_TTL_SECONDS) # Make sure DATA_CACHE_TTL_SECONDS is defined (e.g., 10)
 def load_data():
     # This log appears ONLY when the function *actually* executes (cache miss)
-    st.sidebar.warning(f"!!! RUNNING load_data() - CACHE MISS at {datetime.now().strftime('%H:%M:%S')} !!!")
+    #st.sidebar.warning(f"!!! RUNNING load_data() - CACHE MISS at {datetime.now().strftime('%H:%M:%S')} !!!")
     processed_df = pd.DataFrame(columns=["Timestamp", "Gate No.", "Identification No.", "Name"])
     try:
         conn = st.connection("gsheets", type=GSheetsConnection)
         # conn.reset() # REMOVED - Avoid this
 
         worksheet_to_read = "Sheet1" # Ensure correct name
-        st.sidebar.info(f"[load_data] Reading '{worksheet_to_read}' via conn.read(ttl=5)...")
+        #st.sidebar.info(f"[load_data] Reading '{worksheet_to_read}' via conn.read(ttl=5)...")
 
         # Explicitly set short TTL for the gsheets connection read itself
         df = conn.read(worksheet=worksheet_to_read, ttl=5)
 
-        st.sidebar.info(f"[load_data] Raw data read shape: {df.shape}") # Log raw shape
+        #st.sidebar.info(f"[load_data] Raw data read shape: {df.shape}") # Log raw shape
         # Optional: Show head of raw data read - uncomment carefully if needed
         # if not df.empty: st.sidebar.dataframe(df.head(2))
 
