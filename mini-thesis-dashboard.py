@@ -140,7 +140,7 @@ def load_data():
         # Convert Gate No.
         if "Gate No." in filtered_df.columns:
             filtered_df["Gate No."] = pd.to_numeric(filtered_df["Gate No."], errors='coerce').fillna(0).astype(int)
-        else:
+        #else:
             #st.sidebar.error("[load_data] Gate No. column is missing!") # Log if missing
 
         # Convert ID No. - Robustly handle potential floats/errors
