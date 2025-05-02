@@ -1,8 +1,9 @@
 streamlit
+pandas
+streamlit-gsheets
+streamlit-autorefresh
+gspread
+Pillow
 matplotlib
 numpy
-pandas
-st-gsheets-connection
-gspread
-streamlit-autorefresh
-Pillow
+google-auth
