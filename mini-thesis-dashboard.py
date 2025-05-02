@@ -20,11 +20,13 @@ APP_REFRESH_INTERVAL_SECONDS = 6
 # Example: GOOGLE_SHEET_URL = st.secrets["connections"]["gsheets"]["spreadsheet"]
 # For demonstration, assuming you have the URL/ID available:
 # Replace with your actual Sheet URL or ID if not using secrets["connections"]["gsheets"]["spreadsheet"]
-try:
-    GOOGLE_SHEET_URL = st.secrets("https://docs.google.com/spreadsheets/d/1k-QHlzi96V0RBRP0lOnRG6S4AIsz-e6N4hKjY1enrW8/edit?gid=0#gid=0")
-except (KeyError, AttributeError):
-    st.error("Spreadsheet URL/ID not found in Streamlit Secrets (connections.gsheets.spreadsheet). Please configure secrets.")
-    st.stop()
+# *** PASTE YOUR FULL GOOGLE SHEET URL BELOW ***
+GOOGLE_SHEET_URL = "https://docs.google.com/spreadsheets/d/1k-QHlzi96V0RBRP0lOnRG6S4AIsz-e6N4hKjY1enrW8/edit?gid=0#gid=0"
+
+# Simple check to ensure the placeholder was replaced
+if "https://docs.google.com/spreadsheets/d/1k-QHlzi96V0RBRP0lOnRG6S4AIsz-e6N4hKjY1enrW8/edit?gid=0#gid=0" in GOOGLE_SHEET_URL or not GOOGLE_SHEET_URL.startswith("https"):
+     st.error("Please replace 'YOUR_FULL_GOOGLE_SHEET_URL_HERE' in the code with your actual Google Sheet URL.")
+     st.stop() # Stop execution if URL wasn't set
 
 
 # --- gspread Authentication Function ---
