@@ -105,42 +105,50 @@ def archive_and_clear():
         # 'A1' notation is commonly used for the top-left cell
         archive_sheet.update('A1', data_to_archive, value_input_option='USER_ENTERED') # Write data
 
-        # 7. Clear content from rows 2 onwards in Sheet1
+        # 7. Clear Sheet1 using clear() and rewrite header
         st.sidebar.info(f"Clearing data from '{source_sheet_name}' (keeping header)...")
         try:
-            # Ensure we have the source_sheet object again (might be needed if errors occurred before)
+            # Ensure we have the source_sheet object
             source_sheet = spreadsheet.worksheet(source_sheet_name)
-            current_row_count = source_sheet.row_count
-            current_col_count = source_sheet.col_count
 
-            # Only proceed if there are rows below the header (Row 1)
-            if current_row_count > 1:
-                # Define the range to clear: From A2 down to the last row and last column
-                # Construct range like "A2:D1000" where D is the last column letter, 1000 is last row
-                last_col_letter = gspread.utils.get_column_letter(current_col_count)
-                clear_range = f"A2:{last_col_letter}{current_row_count}"
+            # Get header values from the first row BEFORE clearing
+            header_values = source_sheet.row_values(1)
+            st.sidebar.info("Retrieved header row values.")
 
-                st.sidebar.info(f"Attempting to clear range: {clear_range}")
-                source_sheet.batch_clear([clear_range]) # Clear the specified range(s)
-                st.sidebar.info(f"Cleared range {clear_range} in '{source_sheet_name}'.")
+            if header_values: # Proceed only if header was actually retrieved
+                 # Clear the entire sheet (removes all values and formatting)
+                 source_sheet.clear()
+                 st.sidebar.info(f"Cleared all content and formatting from '{source_sheet_name}'.")
 
-                # Optional: If clearing leaves thousands of blank rows, resize the sheet
-                # This reduces the sheet size visually. Adjust 'rows=2' if you want more blank rows.
-                # Check if resize is needed (e.g., if more than 100 rows originally)
-                # if current_row_count > 100:
-                #     st.sidebar.info("Resizing sheet...")
-                #     source_sheet.resize(rows=2) # Keep header + 1 blank row
+                 # Rewrite the header row back into the first row (A1 notation range is automatic for single list)
+                 source_sheet.update('A1', [header_values], value_input_option='USER_ENTERED')
+                 st.sidebar.info(f"Rewrote header into '{source_sheet_name}'.")
+
+                 # Optional: Re-apply basic formatting like bold to the header if desired
+                 # Note: This might also depend on gspread version/utils availability
+                 try:
+                      last_header_col = gspread.utils.rowcol_to_a1(1, len(header_values))[:-1] # Get letter like 'D' from 'D1'
+                      source_sheet.format(f'A1:{last_header_col}1', {'textFormat': {'bold': True}})
+                      st.sidebar.info("Re-applied bold format to header.")
+                 except AttributeError:
+                     st.sidebar.warning("Could not auto-bold header: function potentially missing in gspread.utils.")
+                 except Exception as fmt_e:
+                     st.sidebar.warning(f"Could not auto-bold header: {fmt_e}")
 
             else:
-                 st.sidebar.info(f"'{source_sheet_name}' has only a header row. No data to clear.")
+                 st.sidebar.warning(f"Could not retrieve header from '{source_sheet_name}'. Sheet not cleared to prevent header loss.")
+                 # Optional: Decide if you should proceed with other steps like cache clearing
+                 # For safety, let's prevent further action if header couldn't be saved
+                 return # Stop the archive process here
 
         except gspread.WorksheetNotFound:
-            st.sidebar.error(f"Source sheet '{source_sheet_name}' not found during clearing step. Archive might be incomplete.")
-            # Allow the process to continue to cache clearing, but the clear step failed.
+            st.sidebar.error(f"Source sheet '{source_sheet_name}' not found during clearing step.")
+            raise # Re-raise to be caught by the outer try/except block
         except Exception as clear_error:
-             st.sidebar.error(f"Error during clearing of '{source_sheet_name}': {clear_error}")
-             # Allow the process to continue, but note the failure.
+             st.sidebar.error(f"Error during clearing/header rewrite of '{source_sheet_name}': {clear_error}")
+             raise # Re-raise
 
+        # ... (Step 8: Clear Streamlit cache, Step 9: Reset state - these run only if clear succeeds) ...
 
         # 8. Clear Streamlit cache to reflect the change
         st.sidebar.info("Clearing Streamlit cache...")
