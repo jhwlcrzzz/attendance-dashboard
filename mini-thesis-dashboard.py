@@ -15,12 +15,6 @@ from google.oauth2.service_account import Credentials # <--- For gspread auth
 # --- Configuration ---
 DATA_CACHE_TTL_SECONDS = 6
 APP_REFRESH_INTERVAL_SECONDS = 6
-# Add your Google Sheet URL or ID here, needed for gspread
-# It's best practice to get this from st.secrets if possible
-# Example: GOOGLE_SHEET_URL = st.secrets["connections"]["gsheets"]["spreadsheet"]
-# For demonstration, assuming you have the URL/ID available:
-# Replace with your actual Sheet URL or ID if not using secrets["connections"]["gsheets"]["spreadsheet"]
-# *** PASTE YOUR FULL GOOGLE SHEET URL BELOW ***
 GOOGLE_SHEET_URL = "https://docs.google.com/spreadsheets/d/1k-QHlzi96V0RBRP0lOnRG6S4AIsz-e6N4hKjY1enrW8/edit?gid=0#gid=0"
 
 # Simple check to ensure the placeholder was replaced
@@ -606,10 +600,7 @@ with col3:
         st.error(f"Error displaying map: {str(e)}")
         st.write("Corrupted Data")
 
-# --- Sidebar ---
-st.sidebar.button("Refresh Data Now", on_click=force_reload)
-#st.sidebar.write(f"UI Refresh Interval: {APP_REFRESH_INTERVAL_SECONDS}s (approx)") # Inform user
-#st.sidebar.write(f"Data Cache TTL: {DATA_CACHE_TTL_SECONDS}s") # Inform user
+
 # --- Sidebar ---
 st.sidebar.divider()
 st.sidebar.subheader("Daily Operations")
@@ -619,10 +610,8 @@ archive_button = st.sidebar.button(
     help=f"Copies today's data from Sheet1 to a new sheet named 'Attendance_{datetime.now().strftime('%b-%d-%Y')}' and clears Sheet1 (keeps header)."
 )
 st.sidebar.divider()
-
-# Existing Manual Refresh Button (can keep or remove)
 st.sidebar.button("Refresh Data Now", on_click=force_reload, use_container_width=True)
-# ... (rest of sidebar) ...
+
 
 
 
