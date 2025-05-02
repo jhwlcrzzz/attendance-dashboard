@@ -23,6 +23,11 @@ APP_REFRESH_INTERVAL_SECONDS = 6
 # *** PASTE YOUR FULL GOOGLE SHEET URL BELOW ***
 GOOGLE_SHEET_URL = "https://docs.google.com/spreadsheets/d/1k-QHlzi96V0RBRP0lOnRG6S4AIsz-e6N4hKjY1enrW8/edit?gid=0#gid=0"
 
+# Simple check to ensure the placeholder was replaced
+if "YOUR_FULL_GOOGLE_SHEET_URL_HERE" in GOOGLE_SHEET_URL or not GOOGLE_SHEET_URL.startswith("https"):
+     st.error("Please replace 'YOUR_FULL_GOOGLE_SHEET_URL_HERE' in the code with your actual Google Sheet URL.")
+     st.stop() # Stop execution if URL wasn't set
+
 # --- gspread Authentication Function ---
 def authenticate_gspread():
     """Authenticates gspread using Streamlit secrets."""
