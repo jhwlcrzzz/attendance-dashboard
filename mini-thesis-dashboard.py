@@ -602,7 +602,6 @@ with col3:
 
 
 # --- Sidebar ---
-st.sidebar.divider()
 st.sidebar.subheader("Daily Operations")
 archive_button = st.sidebar.button(
     "Archive Today's Attendance",
