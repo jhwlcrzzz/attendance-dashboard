@@ -23,12 +23,6 @@ APP_REFRESH_INTERVAL_SECONDS = 6
 # *** PASTE YOUR FULL GOOGLE SHEET URL BELOW ***
 GOOGLE_SHEET_URL = "https://docs.google.com/spreadsheets/d/1k-QHlzi96V0RBRP0lOnRG6S4AIsz-e6N4hKjY1enrW8/edit?gid=0#gid=0"
 
-# Simple check to ensure the placeholder was replaced
-if "https://docs.google.com/spreadsheets/d/1k-QHlzi96V0RBRP0lOnRG6S4AIsz-e6N4hKjY1enrW8/edit?gid=0#gid=0" in GOOGLE_SHEET_URL or not GOOGLE_SHEET_URL.startswith("https"):
-     st.error("Please replace 'YOUR_FULL_GOOGLE_SHEET_URL_HERE' in the code with your actual Google Sheet URL.")
-     st.stop() # Stop execution if URL wasn't set
-
-
 # --- gspread Authentication Function ---
 def authenticate_gspread():
     """Authenticates gspread using Streamlit secrets."""
@@ -137,19 +131,6 @@ def archive_and_clear():
         st.sidebar.error(f"An unexpected error occurred during archive: {e}")
         import traceback
         st.sidebar.text(traceback.format_exc())
-
-
-# --- Rest of your initializations (logo, session state) ---
-# ... (keep your existing logo and session state code) ...
-if 'inside_ids' not in st.session_state:
-    st.session_state.inside_ids = {}
-
-# --- Page config, CSS, Title, Autorefresh ---
-# ... (keep your existing code for these) ...
-st.set_page_config(page_title="Attendance Dashboard", page_icon=":signal_strength:", layout="wide")
-st.markdown("""<style>...</style>""", unsafe_allow_html=True) # Your CSS here
-st.title("LORA RFID-BASED UNIVERSITY ATTENDANCE SYSTEM — Dashboard")
-refresh_count = st_autorefresh(interval=APP_REFRESH_INTERVAL_SECONDS * 1000, limit=None, key="dashboard_refresh")
 
 
 
