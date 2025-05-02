@@ -5,15 +5,152 @@ import time
 import matplotlib.pyplot as plt
 from streamlit_gsheets import GSheetsConnection
 from PIL import Image
-import io   
+# import io    # Not directly used in snippet below
 import numpy as np
 from datetime import datetime, timedelta
-from streamlit_autorefresh import st_autorefresh # Keep if using this method
-
+from streamlit_autorefresh import st_autorefresh
+import gspread # <--- Import gspread
+from google.oauth2.service_account import Credentials # <--- For gspread auth
 
 # --- Configuration ---
-DATA_CACHE_TTL_SECONDS = 6 # Fetch data max every 15 seconds (Adjust as needed)
-APP_REFRESH_INTERVAL_SECONDS = 6 # Rerun UI every 5 seconds (Requires st_autorefresh or similar)
+DATA_CACHE_TTL_SECONDS = 6
+APP_REFRESH_INTERVAL_SECONDS = 6
+# Add your Google Sheet URL or ID here, needed for gspread
+# It's best practice to get this from st.secrets if possible
+# Example: GOOGLE_SHEET_URL = st.secrets["connections"]["gsheets"]["spreadsheet"]
+# For demonstration, assuming you have the URL/ID available:
+# Replace with your actual Sheet URL or ID if not using secrets["connections"]["gsheets"]["spreadsheet"]
+try:
+    GOOGLE_SHEET_URL = st.secrets("https://docs.google.com/spreadsheets/d/1k-QHlzi96V0RBRP0lOnRG6S4AIsz-e6N4hKjY1enrW8/edit?gid=0#gid=0")
+except (KeyError, AttributeError):
+    st.error("Spreadsheet URL/ID not found in Streamlit Secrets (connections.gsheets.spreadsheet). Please configure secrets.")
+    st.stop()
+
+
+# --- gspread Authentication Function ---
+def authenticate_gspread():
+    """Authenticates gspread using Streamlit secrets."""
+    try:
+        creds_dict = st.secrets["connections"]["gsheets"]
+        # Define the necessary scopes
+        scopes = [
+            "https://www.googleapis.com/auth/spreadsheets",
+            "https://www.googleapis.com/auth/drive.file", # Needed to potentially discover spreadsheets by name/list files
+        ]
+        # Create credentials object. Ensure secrets keys match JSON key file.
+        creds = Credentials.from_service_account_info(
+            creds_dict,
+            scopes=scopes
+        )
+        # Authorize gspread client
+        gc = gspread.authorize(creds)
+        return gc
+    except KeyError:
+        st.error("Gspread authentication failed: Ensure 'connections.gsheets' section with service account details exists in Streamlit Secrets.")
+        return None
+    except Exception as e:
+        st.error(f"Gspread authentication error: {e}")
+        return None
+
+# --- Archive and Clear Function ---
+def archive_and_clear():
+    """Copies Sheet1 data to a date-named sheet, then clears Sheet1."""
+    today_str = datetime.now().strftime("%b-%d-%Y") # Format: MonthAbbr-Day-Year (e.g., May-02-2025)
+    new_sheet_name = f"Attendance_{today_str}"
+    source_sheet_name = "Sheet1"
+
+    st.sidebar.info(f"Starting archive process for {today_str}...")
+
+    # 1. Authenticate gspread
+    gc = authenticate_gspread()
+    if not gc:
+        st.sidebar.error("Aborting archive: Authentication failed.")
+        return # Stop if authentication fails
+
+    try:
+        # 2. Open the spreadsheet
+        st.sidebar.info(f"Opening spreadsheet...")
+        # Use the URL or ID stored earlier
+        spreadsheet = gc.open_by_url(GOOGLE_SHEET_URL) # Or gc.open_by_key(SPREADSHEET_ID)
+
+        # 3. Check if archive sheet already exists
+        existing_sheets = [sheet.title for sheet in spreadsheet.worksheets()]
+        if new_sheet_name in existing_sheets:
+            st.sidebar.warning(f"Sheet '{new_sheet_name}' already exists. Skipping archive.")
+            # Optionally, you could add logic here to overwrite or append if desired
+            return # Stop if sheet exists
+
+        # 4. Read data from Sheet1 (using gspread for a fresh read)
+        st.sidebar.info(f"Reading data from '{source_sheet_name}'...")
+        try:
+            source_sheet = spreadsheet.worksheet(source_sheet_name)
+            data_to_archive = source_sheet.get_all_values() # Get list of lists (includes header)
+            if not data_to_archive: # Check if sheet is empty (only header or truly empty)
+                 st.sidebar.warning(f"'{source_sheet_name}' is empty or contains no data to archive.")
+                 return # Nothing to archive
+        except gspread.WorksheetNotFound:
+            st.sidebar.error(f"Source sheet '{source_sheet_name}' not found. Aborting.")
+            return
+
+        # 5. Create the new sheet
+        st.sidebar.info(f"Creating new sheet '{new_sheet_name}'...")
+        # Get dimensions from the data read
+        num_rows = len(data_to_archive)
+        num_cols = len(data_to_archive[0]) if num_rows > 0 else 1 # Handle empty header case
+        archive_sheet = spreadsheet.add_worksheet(title=new_sheet_name, rows=str(num_rows + 5), cols=str(num_cols + 2)) # Add some buffer rows/cols
+
+        # 6. Write data to the new sheet
+        st.sidebar.info(f"Writing data to '{new_sheet_name}'...")
+        # 'A1' notation is commonly used for the top-left cell
+        archive_sheet.update('A1', data_to_archive, value_input_option='USER_ENTERED') # Write data
+
+        # 7. Clear rows 2 onwards from Sheet1
+        st.sidebar.info(f"Clearing data from '{source_sheet_name}' (keeping header)...")
+        current_row_count = source_sheet.row_count
+        # Check if there are rows beyond the header to delete
+        if current_row_count > 1:
+             # Delete rows starting from row 2 down to the last row
+             source_sheet.delete_rows(2, current_row_count)
+             st.sidebar.info(f"Deleted rows 2 to {current_row_count} from '{source_sheet_name}'.")
+        else:
+             st.sidebar.info(f"'{source_sheet_name}' only has header row. No rows deleted.")
+
+
+        # 8. Clear Streamlit cache to reflect the change
+        st.sidebar.info("Clearing Streamlit cache...")
+        st.cache_data.clear()
+
+        # 9. Reset relevant session state
+        if 'inside_ids' in st.session_state:
+             del st.session_state['inside_ids']
+        if 'gate_points' in st.session_state: # Also clear map points? Optional.
+             st.session_state.gate_points = []
+
+        st.sidebar.success(f"Archive complete! Data saved to '{new_sheet_name}' and '{source_sheet_name}' cleared.")
+        # No st.rerun() needed here, Streamlit handles it after callback
+
+    except gspread.exceptions.APIError as api_e:
+         st.sidebar.error(f"Google API Error during archive: {api_e}")
+    except Exception as e:
+        st.sidebar.error(f"An unexpected error occurred during archive: {e}")
+        import traceback
+        st.sidebar.text(traceback.format_exc())
+
+
+# --- Rest of your initializations (logo, session state) ---
+# ... (keep your existing logo and session state code) ...
+if 'inside_ids' not in st.session_state:
+    st.session_state.inside_ids = {}
+
+# --- Page config, CSS, Title, Autorefresh ---
+# ... (keep your existing code for these) ...
+st.set_page_config(page_title="Attendance Dashboard", page_icon=":signal_strength:", layout="wide")
+st.markdown("""<style>...</style>""", unsafe_allow_html=True) # Your CSS here
+st.title("LORA RFID-BASED UNIVERSITY ATTENDANCE SYSTEM — Dashboard")
+refresh_count = st_autorefresh(interval=APP_REFRESH_INTERVAL_SECONDS * 1000, limit=None, key="dashboard_refresh")
+
+
+
 
 logo_path = os.path.join("sd", f"logo.jpg")
 st.logo(logo_path, size="large")
@@ -452,6 +589,19 @@ with col3:
 st.sidebar.button("Refresh Data Now", on_click=force_reload)
 #st.sidebar.write(f"UI Refresh Interval: {APP_REFRESH_INTERVAL_SECONDS}s (approx)") # Inform user
 #st.sidebar.write(f"Data Cache TTL: {DATA_CACHE_TTL_SECONDS}s") # Inform user
+# --- Sidebar ---
+st.sidebar.divider()
+st.sidebar.subheader("Daily Operations")
+archive_button = st.sidebar.button(
+    "Archive Today's Attendance",
+    on_click=archive_and_clear,
+    help=f"Copies today's data from Sheet1 to a new sheet named 'Attendance_{datetime.now().strftime('%b-%d-%Y')}' and clears Sheet1 (keeps header)."
+)
+st.sidebar.divider()
+
+# Existing Manual Refresh Button (can keep or remove)
+st.sidebar.button("Refresh Data Now", on_click=force_reload, use_container_width=True)
+# ... (rest of sidebar) ...
 
 
 
