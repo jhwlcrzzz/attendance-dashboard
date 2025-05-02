@@ -105,16 +105,41 @@ def archive_and_clear():
         # 'A1' notation is commonly used for the top-left cell
         archive_sheet.update('A1', data_to_archive, value_input_option='USER_ENTERED') # Write data
 
-        # 7. Clear rows 2 onwards from Sheet1
+        # 7. Clear content from rows 2 onwards in Sheet1
         st.sidebar.info(f"Clearing data from '{source_sheet_name}' (keeping header)...")
-        current_row_count = source_sheet.row_count
-        # Check if there are rows beyond the header to delete
-        if current_row_count > 1:
-             # Delete rows starting from row 2 down to the last row
-             source_sheet.delete_rows(2, current_row_count)
-             st.sidebar.info(f"Deleted rows 2 to {current_row_count} from '{source_sheet_name}'.")
-        else:
-             st.sidebar.info(f"'{source_sheet_name}' only has header row. No rows deleted.")
+        try:
+            # Ensure we have the source_sheet object again (might be needed if errors occurred before)
+            source_sheet = spreadsheet.worksheet(source_sheet_name)
+            current_row_count = source_sheet.row_count
+            current_col_count = source_sheet.col_count
+
+            # Only proceed if there are rows below the header (Row 1)
+            if current_row_count > 1:
+                # Define the range to clear: From A2 down to the last row and last column
+                # Construct range like "A2:D1000" where D is the last column letter, 1000 is last row
+                last_col_letter = gspread.utils.get_column_letter(current_col_count)
+                clear_range = f"A2:{last_col_letter}{current_row_count}"
+
+                st.sidebar.info(f"Attempting to clear range: {clear_range}")
+                source_sheet.batch_clear([clear_range]) # Clear the specified range(s)
+                st.sidebar.info(f"Cleared range {clear_range} in '{source_sheet_name}'.")
+
+                # Optional: If clearing leaves thousands of blank rows, resize the sheet
+                # This reduces the sheet size visually. Adjust 'rows=2' if you want more blank rows.
+                # Check if resize is needed (e.g., if more than 100 rows originally)
+                # if current_row_count > 100:
+                #     st.sidebar.info("Resizing sheet...")
+                #     source_sheet.resize(rows=2) # Keep header + 1 blank row
+
+            else:
+                 st.sidebar.info(f"'{source_sheet_name}' has only a header row. No data to clear.")
+
+        except gspread.WorksheetNotFound:
+            st.sidebar.error(f"Source sheet '{source_sheet_name}' not found during clearing step. Archive might be incomplete.")
+            # Allow the process to continue to cache clearing, but the clear step failed.
+        except Exception as clear_error:
+             st.sidebar.error(f"Error during clearing of '{source_sheet_name}': {clear_error}")
+             # Allow the process to continue, but note the failure.
 
 
         # 8. Clear Streamlit cache to reflect the change
